@@ -89,6 +89,11 @@ query V($id: ID!, $after: String) {
   }
 }`;
 
+const BULK_DELETE = `
+mutation D($pid: ID!, $ids: [ID!]!) {
+  productVariantsBulkDelete(productId: $pid, variantsIds: $ids) { userErrors { field message } }
+}`;
+
 const BULK_CREATE = `
 mutation C($pid: ID!, $variants: [ProductVariantsBulkInput!]!) {
   productVariantsBulkCreate(productId: $pid, variants: $variants) {
@@ -145,22 +150,39 @@ export function missingTemplateVariants(blankVariants, templateVariants, locatio
   return out;
 }
 
-/** Adds a blank's new colors/sizes to its template(s). The template's own webhook then copies counts. */
+/** Pure: template variants whose color/size the blank no longer has (templates are drafts, safe to trim). */
+export function extraTemplateVariants(blankVariants, templateVariants) {
+  const names = blankOptionNames(blankVariants);
+  if (!names.length) return [];
+  const blankKeys = new Set(blankVariants.map((v) => variantKey(v.selectedOptions, names)).filter(Boolean));
+  const extra = templateVariants.filter((v) => !blankKeys.has(variantKey(v.selectedOptions, names)));
+  return extra.length < templateVariants.length ? extra : []; // never empty a template
+}
+
+/** Adds a blank's new colors/sizes to its template(s), and drops ones the blank no longer has. The template's own webhook then copies counts. */
 export async function syncTemplatesForBlank(blankId, { gql = graphql, locationId } = {}) {
   const templates = (await gql(TEMPLATES)).products.nodes.filter((t) => t.blank?.reference?.id === blankId);
   if (!templates.length) return { templates: 0, added: 0 };
   const blankVariants = await variantsWithPrice(blankId, gql);
   let added = 0;
+  let removed = 0;
   for (const t of templates) {
-    const missing = missingTemplateVariants(blankVariants, await variantsWithPrice(t.id, gql), locationId);
-    if (!missing.length) continue;
+    const tv = await variantsWithPrice(t.id, gql);
+    const missing = missingTemplateVariants(blankVariants, tv, locationId);
+    const extra = extraTemplateVariants(blankVariants, tv);
+    if (!missing.length && !extra.length) continue;
     if (config.dryRun) {
-      console.log(`[dry run] would add ${missing.length} variant(s) to ${t.title}`);
+      console.log(`[dry run] would add ${missing.length} and remove ${extra.length} variant(s) on ${t.title}`);
       continue;
     }
-    await bulkCreateVariants(t.id, missing, gql);
-    console.log(new Date().toISOString(), `${t.title}: added ${missing.length} new color/size(s) from its blank`);
+    if (missing.length) await bulkCreateVariants(t.id, missing, gql);
+    for (let i = 0; i < extra.length; i += 250) {
+      const r = (await gql(BULK_DELETE, { pid: t.id, ids: extra.slice(i, i + 250).map((v) => v.id) })).productVariantsBulkDelete;
+      if (r.userErrors.length) throw new Error(r.userErrors.map((e) => e.message).join('; '));
+    }
+    console.log(new Date().toISOString(), `${t.title}: +${missing.length} / -${extra.length} color/size(s) to match its blank`);
     added += missing.length;
+    removed += extra.length;
   }
-  return { templates: templates.length, added };
+  return { templates: templates.length, added, removed };
 }

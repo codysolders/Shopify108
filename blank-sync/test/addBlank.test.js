@@ -73,3 +73,13 @@ test('a template gets only the blank colors/sizes it is missing, with its own de
   assert.equal(add[0].price, '25.00');
   assert.equal(missingTemplateVariants(blank.slice(0, 2), tmpl, 'L1').length, 0);
 });
+
+test('a template drops colors the blank no longer has, but is never emptied', async () => {
+  const { extraTemplateVariants } = await import('../src/templates.js');
+  const o = (c, s) => [{ name: 'Color', value: c }, { name: 'Size', value: s }];
+  const d = { name: 'Design', value: 'Design name' };
+  const blank = [{ selectedOptions: o('Black', 'S') }];
+  const tmpl = [{ id: 'a', selectedOptions: [d, ...o('Black', 'S')] }, { id: 'b', selectedOptions: [d, ...o('Royal Blue', 'S')] }];
+  assert.deepEqual(extraTemplateVariants(blank, tmpl).map((v) => v.id), ['b']);
+  assert.deepEqual(extraTemplateVariants([{ selectedOptions: o('Red', 'S') }], tmpl), []);
+});
