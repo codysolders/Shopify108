@@ -102,6 +102,23 @@ npm run check
 Watch the logs for the first few orders with
 `gcloud run services logs read blank-sync --region us-west1`.
 
+## Restock minimums and the reorder list
+
+On each **blank** product in Shopify, fill in (under Metafields):
+
+- **Supplier**: SanMar, Bayside, AKWA, ...
+- **Reorder link**: the supplier's page for that blank.
+- **Reorder at (default)**: a color/size goes on the list when it's at or below this number.
+- **Order quantity (default)**: how many to order (12 if left empty).
+
+A single color/size can override both on its variant (**Reorder at**, **Order quantity**).
+Photos come from the blank's own product and variant images in Shopify.
+
+- `npm run reorder` prints the list and the private reorder page link.
+- `node scripts/setup-email.js` (owner, once) turns on a 7 AM Pacific email through Gmail, scheduled
+  with Cloud Scheduler. It needs a [Gmail app password](https://myaccount.google.com/apppasswords).
+  The email is only sent when something is low.
+
 ## Sharing with employees (Secret Manager)
 
 So employees never handle the Shopify keys, the owner stores them in Google Cloud Secret Manager once.
