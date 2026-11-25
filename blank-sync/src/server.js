@@ -1,0 +1,63 @@
+// HTTP server: receives Shopify webhooks.
+import http from 'node:http';
+import { config, requireShopConfig } from './config.js';
+import { verifyWebhook } from './shopify.js';
+import { topicHandlers } from './handlers.js';
+import { getBlankMap } from './blankMap.js';
+
+const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
+export function createServer() {
+  return http.createServer(async (req, res) => {
+    try {
+      if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        return res.end(`blank-sync ok${config.dryRun ? ' (dry run)' : ''}`);
+      }
+      if (req.method === 'POST' && req.url.startsWith('/webhooks')) {
+        const raw = await readBody(req);
+        if (!verifyWebhook(raw, req.headers['x-shopify-hmac-sha256'])) {
+          res.writeHead(401);
+          return res.end('bad signature');
+        }
+        const topic = String(req.headers['x-shopify-topic'] || '');
+        const handler = topicHandlers[topic];
+        if (!handler) {
+          res.writeHead(200);
+          return res.end('ignored');
+        }
+        const payload = JSON.parse(raw.toString('utf8'));
+        await handler(payload);
+        res.writeHead(200);
+        return res.end('ok');
+      }
+      res.writeHead(404);
+      res.end('not found');
+    } catch (err) {
+      // A 500 makes Shopify retry; changes use idempotency keys, so a retry won't double count.
+      log('error', err.stack || err);
+      res.writeHead(500);
+      res.end('error');
+    }
+  });
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  requireShopConfig();
+  createServer().listen(config.port, () => {
+    log(`blank-sync listening on ${config.port}${config.dryRun ? ' (DRY RUN: no inventory changes)' : ''}`);
+    getBlankMap().then(
+      (m) => log(`loaded ${m.designs.length} design product(s), ${m.designVariantToBlank.size} linked variant(s)`),
+      (e) => log('could not load products yet:', e.message),
+    );
+  });
+}
