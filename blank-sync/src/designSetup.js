@@ -5,6 +5,7 @@ import { graphql, gid, stableKey } from './shopify.js';
 import { fetchVariants, invalidateBlankMap } from './blankMap.js';
 import { matchDesignToBlank } from './matching.js';
 import { setDesignQuantities, getDefaultLocationId } from './inventory.js';
+import { syncTemplatesForBlank } from './templates.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 export const REVIEW_TAG = 'blank-sync-needs-review';
@@ -185,12 +186,26 @@ export async function setupDesign(productId, deps = {}) {
   return { linked: true, matched: matches.length, ...changes };
 }
 
+// A blank's colors/sizes, as last synced to its templates (stock-only updates skip the work).
+const lastBlankSync = new Map();
+async function syncBlankTemplates(payload, deps) {
+  const gql = deps.gql || graphql;
+  const id = gid('Product', payload.id);
+  const sig = (payload.variants || []).map((v) => [v.option1, v.option2, v.option3].join('~')).sort().join('|');
+  if (payload.variants && lastBlankSync.get(id) === sig) return { skipped: 'unchanged' };
+  const r = await syncTemplatesForBlank(id, { gql, locationId: await getDefaultLocationId(gql) });
+  if (payload.variants) lastBlankSync.set(id, sig);
+  return r;
+}
+
 /** Webhook entry: products/create and products/update. Never throws, so one bad product can't block others. */
 export async function handleDesignProductWebhook(payload, deps = {}) {
   invalidateBlankMap();
   if (!payload?.id) return { skipped: 'no id' };
   try {
-    return await setupDesign(payload.id, { ...deps, payload });
+    const r = await setupDesign(payload.id, { ...deps, payload });
+    if (r.skipped === 'not a design') return { ...r, template: await syncBlankTemplates(payload, deps) };
+    return r;
   } catch (e) {
     log(`design setup failed for ${payload.title || payload.id}:`, e.message);
     return { error: e.message };

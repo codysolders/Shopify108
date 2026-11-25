@@ -47,3 +47,29 @@ test('page escapes what was typed and uses its own key', () => {
   assert.ok(html.includes('Nothing was created'));
   assert.notEqual(addBlankKey('s'), reorderKey('s'));
 });
+
+test('new colors get every size; colors already there are skipped (any spelling)', async () => {
+  const { newColorVariants } = await import('../src/addBlank.js');
+  const options = [{ name: 'Color', values: ['Black', 'Sport Grey'] }, { name: 'Size', values: ['S', 'M'] }];
+  const r = newColorVariants(options, [{ price: '4.00' }], ['Maroon', 'sport gray', 'Forest'], 'L1');
+  assert.deepEqual(r.added, ['Maroon', 'Forest']);
+  assert.deepEqual(r.already, ['sport gray']);
+  assert.equal(r.variants.length, 4);
+  assert.deepEqual(r.variants[1].optionValues, [{ optionName: 'Color', name: 'Maroon' }, { optionName: 'Size', name: 'M' }]);
+  assert.ok(r.variants.every((v) => v.price === '4.00' && v.inventoryPolicy === 'DENY' && v.inventoryQuantities[0].locationId === 'L1'));
+});
+
+test('a template gets only the blank colors/sizes it is missing, with its own design value and price', async () => {
+  const { missingTemplateVariants } = await import('../src/templates.js');
+  const o = (c, s) => [{ name: 'Color', value: c }, { name: 'Size', value: s }];
+  const blank = [{ selectedOptions: o('Black', 'S') }, { selectedOptions: o('Black', 'M') }, { selectedOptions: o('Maroon', 'S') }];
+  const tmpl = [
+    { price: '25.00', selectedOptions: [{ name: 'Design', value: 'Design name' }, ...o('Black', 'S')] },
+    { price: '25.00', selectedOptions: [{ name: 'Design', value: 'Design name' }, ...o('Black', 'Medium')] },
+  ];
+  const add = missingTemplateVariants(blank, tmpl, 'L1');
+  assert.equal(add.length, 1);
+  assert.deepEqual(add[0].optionValues, [{ optionName: 'Design', name: 'Design name' }, { optionName: 'Color', name: 'Maroon' }, { optionName: 'Size', name: 'S' }]);
+  assert.equal(add[0].price, '25.00');
+  assert.equal(missingTemplateVariants(blank.slice(0, 2), tmpl, 'L1').length, 0);
+});

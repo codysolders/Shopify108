@@ -3,7 +3,9 @@
 import crypto from 'node:crypto';
 import { config } from './config.js';
 import { graphql } from './shopify.js';
-import { createTemplate, templateTitle } from './templates.js';
+import { createTemplate, templateTitle, variantsWithPrice, bulkCreateVariants } from './templates.js';
+import { normValue } from './matching.js';
+import { getDefaultLocationId } from './inventory.js';
 import { listProducts } from './designSetup.js';
 import { supplierColors, plainProductLink } from './supplierLinks.js';
 
@@ -113,20 +115,81 @@ export async function colorsFromLink(link, fetchImpl = fetch) {
   return colors || [];
 }
 
+const BLANK_INFO = `
+query B($id: ID!) { product(id: $id) { id title options { name values }
+  reorderUrl: metafield(namespace: "custom", key: "reorder_url") { value } } }`;
+
+/**
+ * Pure: new variants for colors the blank doesn't have yet, one per size, copying the price of the
+ * blank's first variant. Returns { variants, added, already }.
+ */
+export function newColorVariants(options, existingVariants, colors, locationId) {
+  const colorOpt = options.find((o) => /^colou?r$/i.test(o.name));
+  if (!colorOpt) throw new Error('This blank has no Color option.');
+  const others = options.filter((o) => o !== colorOpt && o.name !== 'Title');
+  const have = new Set(colorOpt.values.map(normValue));
+  const added = [];
+  const already = [];
+  for (const c of colors) (have.has(normValue(c)) ? already : added).push(c);
+  for (const c of added) have.add(normValue(c));
+  let combos = [[]];
+  for (const o of others) combos = combos.flatMap((x) => o.values.map((v) => [...x, { optionName: o.name, name: v }]));
+  const price = existingVariants[0]?.price || '0.00';
+  const variants = added.flatMap((color) =>
+    combos.map((rest) => ({
+      optionValues: [{ optionName: colorOpt.name, name: color }, ...rest],
+      price,
+      inventoryPolicy: 'DENY',
+      inventoryItem: { tracked: true },
+      inventoryQuantities: [{ locationId, availableQuantity: 0 }],
+    })),
+  );
+  return { variants, added, already };
+}
+
+/** Adds colors (every size) to a blank. Its template follows automatically via the products webhook. */
+export async function addColorsToBlank(blankId, colorsText, gql = graphql) {
+  const colors = splitList(colorsText);
+  if (!colors.length) return { errors: ['List at least one color.'] };
+  const blank = (await gql(BLANK_INFO, { id: blankId })).product;
+  if (!blank) return { errors: ['That blank no longer exists.'] };
+  const existing = await variantsWithPrice(blank.id, gql);
+  let plan;
+  try {
+    plan = newColorVariants(blank.options, existing, colors, await getDefaultLocationId(gql));
+  } catch (e) {
+    return { errors: [e.message] };
+  }
+  if (!plan.added.length) return { errors: [`${blank.title} already has ${plan.already.join(', ')}.`] };
+  if (plan.variants.length + existing.length > 2048) return { errors: ['That would pass Shopify\'s 2,048 variant limit.'] };
+  if (!config.dryRun) await bulkCreateVariants(blank.id, plan.variants, gql);
+  return { colorsAdded: { blank, added: plan.added, already: plan.already, variants: plan.variants.length, dryRun: config.dryRun } };
+}
+
+/** Supplier colors this blank doesn't carry yet, from its saved Reorder link. */
+export async function newSupplierColors(blankId, gql = graphql, fetchImpl = fetch) {
+  const blank = (await gql(BLANK_INFO, { id: blankId })).product;
+  const link = blank?.reorderUrl?.value;
+  if (!link) return { colors: [], note: 'This blank has no supplier link saved.' };
+  const colorOpt = blank.options.find((o) => /^colou?r$/i.test(o.name));
+  const have = new Set((colorOpt?.values || []).map(normValue));
+  const all = await colorsFromLink(link, fetchImpl);
+  return { colors: all.filter((c) => !have.has(normValue(c))) };
+}
+
 /** Blanks that have no template yet, for the "make a template" buttons. */
-export async function blanksWithoutTemplate(gql = graphql) {
+export async function blankLists(gql = graphql) {
   const products = await listProducts(gql);
   const titles = new Set(products.map((p) => p.title));
-  return products.filter(
-    (p) => (p.isBlank || /inventory/i.test(p.title)) && !p.isDesign && !p.title.startsWith('TEMPLATE') && !titles.has(templateTitle(p.title)),
-  );
+  const all = products.filter((p) => (p.isBlank || /inventory/i.test(p.title)) && !p.isDesign && !p.title.startsWith('TEMPLATE'));
+  return { allBlanks: all, blanks: all.filter((p) => !titles.has(templateTitle(p.title))) };
 }
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 const admin = (id) => `https://admin.shopify.com/store/${config.shop}/products/${String(id).split('/').pop()}`;
 
-export function renderAddBlankPage({ key, form = {}, result = null, blanks = [] }) {
+export function renderAddBlankPage({ key, form = {}, result = null, blanks = [], allBlanks = [] }) {
   const f = { sizes: DEFAULT_SIZES, template: true, ...form };
   let banner = '';
   if (result?.errors) banner = `<div class="msg bad"><b>Nothing was created.</b><ul>${result.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
@@ -135,6 +198,9 @@ export function renderAddBlankPage({ key, form = {}, result = null, blanks = [] 
     banner = `<div class="msg ok"><b>Created <a href="${esc(admin(result.blank.id))}" target="_blank">${esc(result.blank.title)}</a></b> with ${result.variants} colors/sizes, all at 0. Count your shirts and enter the numbers in Shopify.`;
     if (result.template?.product?.id) banner += `<br>Design template: <a href="${esc(admin(result.template.product.id))}" target="_blank">${esc(result.template.product.title)}</a>. Duplicate it for each new design.`;
     banner += '</div>';
+  } else if (result?.colorsAdded) {
+    const c = result.colorsAdded;
+    banner = `<div class="msg ok">${c.dryRun ? 'Dry run: would add' : 'Added'} <b>${esc(c.added.join(', '))}</b> to <a href="${esc(admin(c.blank.id))}" target="_blank">${esc(c.blank.title)}</a> (${c.variants} new color/sizes, at 0). Its design template gets them in a minute. Enter the counts in Shopify.${c.already.length ? ` Already there: ${esc(c.already.join(', '))}.` : ''}</div>`;
   } else if (result?.templateOnly) {
     const t = result.templateOnly;
     banner = `<div class="msg ok">${t.existed ? 'Already there' : 'Created'}: <a href="${esc(admin(t.product.id))}" target="_blank">${esc(t.product.title)}</a></div>`;
@@ -156,7 +222,7 @@ main{max-width:640px;margin:0 auto;padding:16px}
 h1{font-size:22px;margin:8px 0 4px}h2{font-size:17px;margin:28px 0 8px}
 .v{color:var(--muted);font-size:13px}
 label{display:block;margin:14px 0 4px;font-weight:600}
-input[type=text],input[type=url],input[type=number],textarea{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
+input[type=text],input[type=url],input[type=number],textarea,select{width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--fg);font:inherit}
 textarea{min-height:84px}
 .row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 button{padding:10px 16px;border:0;border-radius:6px;background:var(--accent);color:#fff;font:inherit;font-weight:600;cursor:pointer}
@@ -197,8 +263,30 @@ ${banner}
 <label class="check"><input type="checkbox" name="template" value="1"${f.template ? ' checked' : ''}> Also make a design template to duplicate</label>
 <p><button type="submit">Create blank</button></p>
 </form>
+${allBlanks.length ? `<h2>Add colors to a blank</h2>
+<form method="post" action="/add-blank/colors${action}">
+<label for="blankId">Blank</label>
+<select id="blankId" name="id">${allBlanks.map((b) => `<option value="${esc(b.id)}">${esc(b.title)}</option>`).join('')}</select>
+<button type="button" class="sec" id="loadNew" style="margin-top:8px">Show supplier colors I don't have</button> <span class="v" id="newmsg"></span>
+<label for="newColors">New colors</label>
+<textarea id="newColors" name="colors" placeholder="Maroon, Forest Green"></textarea>
+<div class="v">Adds every size of each color, at 0, to the blank and its design template. Existing designs are left alone.</div>
+<p><button type="submit">Add colors</button></p>
+</form>` : ''}
 ${templates}
 <script>
+document.getElementById('loadNew') && (document.getElementById('loadNew').onclick = async () => {
+  const msg = document.getElementById('newmsg');
+  msg.textContent = 'Looking...';
+  try {
+    const r = await fetch('/add-blank/supplier-colors${action}&id=' + encodeURIComponent(document.getElementById('blankId').value));
+    const d = await r.json();
+    if (d.note) { msg.textContent = d.note; return; }
+    if (!d.colors.length) { msg.textContent = 'You already have every color the supplier lists.'; return; }
+    document.getElementById('newColors').value = d.colors.join(', ');
+    msg.textContent = d.colors.length + ' colors you do not have. Keep only the ones you want.';
+  } catch (e) { msg.textContent = 'Could not read the supplier page.'; }
+});
 document.getElementById('load').onclick = async () => {
   const link = document.getElementById('reorderUrl').value.trim();
   const msg = document.getElementById('loadmsg');

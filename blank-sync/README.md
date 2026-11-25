@@ -43,6 +43,12 @@ the name with its style number, supplier, link, colors (or press **Get colors fr
 "Reorder at" and order quantity. It creates the blank product (tracked, never oversold, not on the
 online store) and its design template. Then count your shirts and enter the numbers in Shopify.
 
+**New colors for a blank you already have:** on the same page, under **Add colors to a blank**,
+pick the blank and type the colors (or press **Show supplier colors I don't have**). Every size is
+added at 0. Colors added in Shopify admin work too: whenever a blank gains a color or size, the app
+adds it to that blank's design template automatically. Existing designs are left alone, so each
+design only offers the colors you choose.
+
 The same page has **Make template** buttons for blanks that don't have one yet. From Cloud Shell:
 `npm run template -- 64200`.
 

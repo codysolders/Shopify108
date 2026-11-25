@@ -6,7 +6,7 @@ import { verifyWebhook } from './shopify.js';
 import { topicHandlers } from './handlers.js';
 import { getBlankMap } from './blankMap.js';
 import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey, addExactLinks } from './restock.js';
-import { addBlankKey, createBlank, colorsFromLink, blanksWithoutTemplate, renderAddBlankPage } from './addBlank.js';
+import { addBlankKey, createBlank, colorsFromLink, blankLists, renderAddBlankPage, addColorsToBlank, newSupplierColors } from './addBlank.js';
 import { createTemplate } from './templates.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
@@ -41,7 +41,7 @@ export function createServer() {
         }
         const key = url.searchParams.get('key');
         const page = async (args) => {
-          const html = renderAddBlankPage({ key, blanks: await blanksWithoutTemplate(), ...args });
+          const html = renderAddBlankPage({ key, ...(await blankLists()), ...args });
           res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
           return res.end(html);
         };
@@ -50,6 +50,17 @@ export function createServer() {
           const colors = /^https:\/\//i.test(link) ? await colorsFromLink(link).catch(() => []) : [];
           res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
           return res.end(JSON.stringify({ colors }));
+        }
+        if (req.method === 'GET' && url.pathname === '/add-blank/supplier-colors') {
+          const out = await newSupplierColors(url.searchParams.get('id') || '').catch(() => ({ colors: [], note: 'Could not read the supplier page.' }));
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          return res.end(JSON.stringify(out));
+        }
+        if (req.method === 'POST' && url.pathname === '/add-blank/colors') {
+          const form = Object.fromEntries(new URLSearchParams((await readBody(req)).toString()));
+          const result = await addColorsToBlank(form.id, form.colors);
+          if (result.colorsAdded) log(`add-blank: added ${result.colorsAdded.added.join(', ')} to ${result.colorsAdded.blank.title}`);
+          return page({ result });
         }
         if (req.method === 'GET' && url.pathname === '/add-blank') return page({});
         if (req.method === 'POST' && url.pathname === '/add-blank') {

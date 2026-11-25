@@ -2,6 +2,7 @@
 // Staff duplicate it for each new design, so every new design joins Blank Sync with no extra steps.
 import { config } from './config.js';
 import { graphql, gid } from './shopify.js';
+import { blankOptionNames, variantKey, normName } from './matching.js';
 
 const BLANK = `
 query Blank($id: ID!) {
@@ -70,4 +71,96 @@ export async function createTemplate(blankId, { price, gql = graphql } = {}) {
   const r = (await gql(PRODUCT_SET, { input })).productSet;
   if (r.userErrors.length) throw new Error(r.userErrors.map((e) => e.message).join('; '));
   return { product: r.product, created: true, variants: input.variants.length };
+}
+
+// ---- Keeping templates in step with their blank ----
+
+const TEMPLATES = `
+query T { products(first: 50, query: "title:TEMPLATE*") { nodes { id title
+  blank: metafield(namespace: "custom", key: "blank_product") { reference { ... on Product { id } } } } } }`;
+
+const VARIANTS_WITH_PRICE = `
+query V($id: ID!, $after: String) {
+  product(id: $id) {
+    variants(first: 100, after: $after) {
+      pageInfo { hasNextPage endCursor }
+      nodes { id price selectedOptions { name value } }
+    }
+  }
+}`;
+
+const BULK_CREATE = `
+mutation C($pid: ID!, $variants: [ProductVariantsBulkInput!]!) {
+  productVariantsBulkCreate(productId: $pid, variants: $variants) {
+    productVariants { id }
+    userErrors { field message }
+  }
+}`;
+
+export async function variantsWithPrice(productId, gql = graphql) {
+  const out = [];
+  let after = null;
+  do {
+    const conn = (await gql(VARIANTS_WITH_PRICE, { id: productId, after })).product?.variants;
+    if (!conn) break;
+    out.push(...conn.nodes);
+    after = conn.pageInfo.hasNextPage ? conn.pageInfo.endCursor : null;
+  } while (after);
+  return out;
+}
+
+export async function bulkCreateVariants(productId, variants, gql = graphql) {
+  for (let i = 0; i < variants.length; i += 100) {
+    const r = (await gql(BULK_CREATE, { pid: productId, variants: variants.slice(i, i + 100) })).productVariantsBulkCreate;
+    if (r.userErrors.length) throw new Error(r.userErrors.map((e) => e.message).join('; '));
+  }
+}
+
+/**
+ * Pure: the variants a template is missing compared to its blank (new colors or sizes), ready for
+ * productVariantsBulkCreate. Uses the template's own Design value and price. Never removes anything.
+ */
+export function missingTemplateVariants(blankVariants, templateVariants, locationId) {
+  const names = blankOptionNames(blankVariants);
+  const have = new Set(templateVariants.map((v) => variantKey(v.selectedOptions, names)).filter(Boolean));
+  const first = templateVariants[0];
+  const design = first?.selectedOptions?.find((o) => normName(o.name) === normName(DESIGN_OPTION))?.value || DESIGN_PLACEHOLDER;
+  const price = first?.price || '0.00';
+  const out = [];
+  for (const b of blankVariants) {
+    const k = variantKey(b.selectedOptions, names);
+    if (!k || have.has(k)) continue;
+    have.add(k);
+    out.push({
+      optionValues: [
+        { optionName: DESIGN_OPTION, name: design },
+        ...b.selectedOptions.filter((o) => o.name !== 'Title').map((o) => ({ optionName: o.name, name: o.value })),
+      ],
+      price,
+      inventoryPolicy: 'DENY',
+      inventoryItem: { tracked: true },
+      inventoryQuantities: [{ locationId, availableQuantity: 0 }],
+    });
+  }
+  return out;
+}
+
+/** Adds a blank's new colors/sizes to its template(s). The template's own webhook then copies counts. */
+export async function syncTemplatesForBlank(blankId, { gql = graphql, locationId } = {}) {
+  const templates = (await gql(TEMPLATES)).products.nodes.filter((t) => t.blank?.reference?.id === blankId);
+  if (!templates.length) return { templates: 0, added: 0 };
+  const blankVariants = await variantsWithPrice(blankId, gql);
+  let added = 0;
+  for (const t of templates) {
+    const missing = missingTemplateVariants(blankVariants, await variantsWithPrice(t.id, gql), locationId);
+    if (!missing.length) continue;
+    if (config.dryRun) {
+      console.log(`[dry run] would add ${missing.length} variant(s) to ${t.title}`);
+      continue;
+    }
+    await bulkCreateVariants(t.id, missing, gql);
+    console.log(new Date().toISOString(), `${t.title}: added ${missing.length} new color/size(s) from its blank`);
+    added += missing.length;
+  }
+  return { templates: templates.length, added };
 }
