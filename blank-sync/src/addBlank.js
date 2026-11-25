@@ -6,7 +6,7 @@ import { graphql } from './shopify.js';
 import { createTemplate, templateTitle, variantsWithPrice, bulkCreateVariants } from './templates.js';
 import { normValue } from './matching.js';
 import { getDefaultLocationId } from './inventory.js';
-import { listProducts } from './designSetup.js';
+import { listProducts, suggestTag } from './designSetup.js';
 import { supplierColors, plainProductLink } from './supplierLinks.js';
 
 export const DEFAULT_SIZES = 'S, M, L, XL, 2XL, 3XL';
@@ -105,6 +105,8 @@ export async function createBlank(form, gql = graphql) {
   const r = (await gql(PRODUCT_SET, { input: built.input })).productSet;
   if (r.userErrors.length) return { errors: r.userErrors.map((e) => e.message) };
   const out = { blank: r.product, variants: built.input.variants.length };
+  const products = [...(await listProducts(gql)).filter((p) => p.id !== r.product.id), { id: r.product.id, title: r.product.title, isDesign: false, isBlank: true }];
+  out.tag = suggestTag({ id: r.product.id, title: r.product.title }, products);
   if (form.template) out.template = await createTemplate(r.product.id, { gql });
   return out;
 }
@@ -181,7 +183,10 @@ export async function newSupplierColors(blankId, gql = graphql, fetchImpl = fetc
 export async function blankLists(gql = graphql) {
   const products = await listProducts(gql);
   const titles = new Set(products.map((p) => p.title));
-  const all = products.filter((p) => (p.isBlank || /inventory/i.test(p.title)) && !p.isDesign && !p.title.startsWith('TEMPLATE'));
+  const all = products
+    .filter((p) => (p.isBlank || /inventory/i.test(p.title)) && !p.isDesign && !p.title.startsWith('TEMPLATE'))
+    .map((p) => ({ ...p, tag: suggestTag(p, products) }))
+    .sort((a, b) => a.title.localeCompare(b.title));
   return { allBlanks: all, blanks: all.filter((p) => !titles.has(templateTitle(p.title))) };
 }
 
@@ -195,7 +200,7 @@ export function renderAddBlankPage({ key, form = {}, result = null, blanks = [],
   if (result?.errors) banner = `<div class="msg bad"><b>Nothing was created.</b><ul>${result.errors.map((e) => `<li>${esc(e)}</li>`).join('')}</ul></div>`;
   else if (result?.dryRun) banner = `<div class="msg">Dry run: would create ${esc(result.title)} with ${result.variants} colors/sizes.</div>`;
   else if (result?.blank) {
-    banner = `<div class="msg ok"><b>Created <a href="${esc(admin(result.blank.id))}" target="_blank">${esc(result.blank.title)}</a></b> with ${result.variants} colors/sizes, all at 0. Count your shirts and enter the numbers in Shopify.`;
+    banner = `<div class="msg ok"><b>Created <a href="${esc(admin(result.blank.id))}" target="_blank">${esc(result.blank.title)}</a></b> with ${result.variants} colors/sizes, all at 0. Count your shirts and enter the numbers in Shopify.${result.tag ? `<br>Tag for its designs: <code>${esc(result.tag)}</code>` : '<br>No word in its name is unique to it, so the blank: tag won\'t work. Rename it with its style number.'}`;
     if (result.template?.product?.id) banner += `<br>Design template: <a href="${esc(admin(result.template.product.id))}" target="_blank">${esc(result.template.product.title)}</a>. Duplicate it for each new design.`;
     banner += '</div>';
   } else if (result?.colorsAdded) {
@@ -206,6 +211,11 @@ export function renderAddBlankPage({ key, form = {}, result = null, blanks = [],
     banner = `<div class="msg ok">${t.existed ? 'Already there' : 'Created'}: <a href="${esc(admin(t.product.id))}" target="_blank">${esc(t.product.title)}</a></div>`;
   }
   const action = `?key=${esc(key)}`;
+  const tagList = allBlanks.length
+    ? `<h2>Blank tags</h2><div class="v">Add one of these tags to a design product to link it to that blank.</div><ul class="list">${allBlanks
+        .map((b) => `<li><span>${esc(b.title)}</span>${b.tag ? `<code class="tag">${esc(b.tag)}</code>` : '<span class="v">rename with its style number</span>'}</li>`)
+        .join('')}</ul>`
+    : '';
   const templates = blanks.length
     ? `<h2>Blanks without a design template</h2><ul class="list">${blanks
         .map((b) => `<li><span>${esc(b.title)}</span><form method="post" action="/add-blank/template${action}"><input type="hidden" name="id" value="${esc(b.id)}"><button>Make template</button></form></li>`)
@@ -232,11 +242,14 @@ button.sec{background:transparent;color:var(--accent);border:1px solid var(--acc
 .msg ul{margin:6px 0 0;padding-left:20px}a{color:var(--accent)}
 .list{list-style:none;padding:0}.list li{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line)}
 .list form{margin:0}
+code.tag{font:14px ui-monospace,monospace;padding:3px 8px;border:1px solid var(--line);border-radius:6px;white-space:nowrap;user-select:all}
 </style></head>
 <body><main>
 <h1>Add a blank</h1>
 <div class="v">Creates the blank product in Shopify with every color and size, ready for Blank Sync and the reorder list.</div>
 ${banner}
+${tagList}
+<h2>New blank</h2>
 <form method="post" action="/add-blank${action}">
 <label for="title">Blank name</label>
 <input type="text" id="title" name="title" required placeholder="Gildan 64000 Inventory" value="${esc(f.title)}">
