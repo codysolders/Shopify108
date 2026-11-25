@@ -6,6 +6,7 @@ import { verifyWebhook } from './shopify.js';
 import { topicHandlers } from './handlers.js';
 import { getBlankMap } from './blankMap.js';
 import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey } from './restock.js';
+import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -25,11 +26,42 @@ export function createServer() {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         return res.end(`blank-sync ok${config.dryRun ? ' (dry run)' : ''}`);
       }
-      if (req.method === 'GET' && req.url.startsWith('/reorder')) {
-        const key = new URL(req.url, 'http://x').searchParams.get('key') || '';
+      const url = new URL(req.url, 'http://x');
+      const keyOk = () => {
+        const key = url.searchParams.get('key') || '';
         const expected = reorderKey();
-        const ok = key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
-        if (!ok) {
+        return key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
+      };
+      // Called every morning by Cloud Scheduler. ?test=1 sends even when nothing is low.
+      if (req.method === 'POST' && url.pathname === '/tasks/reorder-email') {
+        if (!keyOk()) {
+          res.writeHead(403);
+          return res.end('forbidden');
+        }
+        if (!emailConfigured()) {
+          res.writeHead(200);
+          return res.end('email not set up');
+        }
+        const result = computeReorder(await fetchBlanksForRestock());
+        const test = url.searchParams.get('test') === '1';
+        if (!result.lowCount && !test) {
+          res.writeHead(200);
+          return res.end('nothing low, no email sent');
+        }
+        const pageUrl = `${config.appUrl}/reorder?key=${reorderKey()}`;
+        await sendReorderEmail({
+          subject: result.lowCount
+            ? `Reorder blanks: ${result.lowCount} color/size${result.lowCount === 1 ? '' : 's'} low`
+            : 'Blank Sync test email: nothing to reorder',
+          text: reorderEmailText(result, pageUrl),
+          html: renderReorderPage(result),
+        });
+        log(`reorder email sent (${result.lowCount} low)`);
+        res.writeHead(200);
+        return res.end('sent');
+      }
+      if (req.method === 'GET' && url.pathname === '/reorder') {
+        if (!keyOk()) {
           res.writeHead(403, { 'Content-Type': 'text/plain' });
           return res.end('This link is missing its key. Ask the owner for the reorder page link.');
         }

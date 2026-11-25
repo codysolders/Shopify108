@@ -51,6 +51,11 @@ export const config = {
   dryRun: String(process.env.DRY_RUN ?? 'true').toLowerCase() !== 'false',
   defaultLocationId: process.env.DEFAULT_LOCATION_ID || '',
   port: Number(process.env.PORT || 8080),
+  appUrl: (process.env.APP_URL || 'https://blank-sync-478869332742.us-west1.run.app').replace(/\/$/, ''),
+  // Morning reorder email
+  gmailUser: process.env.GMAIL_USER || '',
+  gmailAppPassword: (process.env.GMAIL_APP_PASSWORD || '').replace(/\s+/g, ''),
+  alertEmailTo: process.env.ALERT_EMAIL_TO || '',
   // Metafields the store owner fills in.
   blankProductMetafield: { namespace: 'custom', key: 'blank_product' },
   blankVariantMetafield: { namespace: 'custom', key: 'blank_variant' },
