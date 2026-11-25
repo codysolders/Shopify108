@@ -63,7 +63,7 @@ You'll need about 30 minutes. Nothing changes in your store until step 5, and th
    store's account.
 2. Click **Apps → Create app**, choose to start from the Dev Dashboard, and name it "Blank Sync".
 3. Create a version with these access scopes:
-   `read_products, write_products, read_inventory, write_inventory, read_orders, write_orders, read_locations`
+   `read_products, write_products, read_inventory, write_inventory, read_orders, write_orders, read_locations, read_files, write_files`
 4. Release the version, then **Install** the app on your store.
 5. On the app's **Settings** page, copy the **Client ID** and **Client secret**.
 
@@ -126,6 +126,28 @@ npm run check
 Watch the logs for the first few orders with
 `gcloud run services logs read blank-sync --region us-west1`.
 
+## Mockups: each design on each blank color
+
+Open the **Mockups** page (`npm run links` prints its private link) and pick a group, like
+`union-3711`.
+
+1. **Art for each design.** Upload a PNG with a see-through background for Design 1, Design 2, ...
+   It is saved in Shopify Files and used on every product in the group with that design.
+2. **Check the preview.** Open a product to see every design on every color. Move the art with the
+   sliders (or **Full front / Left chest / Hat front**) and **Save placement**. Each product keeps
+   its own placement, so hats, pants and shirts can differ.
+3. **Make the mockups.** The app puts the art on the blank photo of each color and attaches the
+   picture to every size of that design and color, so shoppers see the shirt they picked. Making
+   them again after a change replaces the old pictures.
+
+Blank photos are found automatically: the photo on that color's variants today, then a product
+photo whose file name or alt text names the color (like `2905-navy.jpg`), then a photo on the linked
+blank product. You can pick a different one per color. **Hide plain blank photos** takes them off
+the store page once every color has mockups (they stay in Files).
+
+The page needs the `read_files` and `write_files` scopes on the app (see setup step 1).
+Saved per product in JSON metafields: `custom.mockup_art`, `mockup_place`, `mockup_photos`, `mockup_made`.
+
 ## Restock minimums and the reorder list
 
 On each **blank** product in Shopify, fill in (under Metafields):
@@ -168,7 +190,8 @@ run `node scripts/make-env.js` and `node scripts/store-secrets.js` again.
 
 ## For developers
 
-- Node 20+, no dependencies. `npm test` runs the tests.
+- Node 20+. Dependencies: nodemailer (email) and sharp (mockup images). `npm test` runs the tests.
+- `src/mockups.js` and `src/mockupPage.js`: the Mockups page and image generator.
 - `src/matching.js`: pure matching of design variants to blank variants.
 - `src/blankMap.js`: reads linked products from Shopify and builds the lookup index (cached 5 minutes,
   cleared on product webhooks).

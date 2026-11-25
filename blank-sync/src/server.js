@@ -8,9 +8,103 @@ import { getBlankMap } from './blankMap.js';
 import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey, addExactLinks } from './restock.js';
 import { addBlankKey, createBlank, colorsFromLink, blankLists, renderAddBlankPage, addColorsToBlank, newSupplierColors } from './addBlank.js';
 import { createTemplate } from './templates.js';
+import { mockupsKey, loadProduct, listTagged, designTags, saveArt, savePlace, savePhoto, makeMockups, hidePlainPhotos } from './mockups.js';
+import { renderMockupHome, renderMockupGroup, renderMockupProduct } from './mockupPage.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
+
+// Parses a multipart form (file uploads) with Node's built-in web Request.
+async function readMultipart(req, maxBytes = 25 * 1024 * 1024) {
+  const buf = await readBody(req);
+  if (buf.length > maxBytes) throw Object.assign(new Error('That file is too big (25 MB max).'), { userFacing: true });
+  return new Request('http://x', { method: 'POST', headers: { 'content-type': req.headers['content-type'] || '' }, body: buf }).formData();
+}
+
+const sameSite = (back) => {
+  if (typeof back !== 'string' || !back.startsWith('/mockups')) return '/mockups';
+  const u = new URL(back, 'http://x');
+  u.searchParams.delete('msg');
+  u.searchParams.delete('bad');
+  return u.pathname + u.search;
+};
+const withMsg = (back, msg, bad) => `${back}${back.includes('?') ? '&' : '?'}${bad ? 'bad=1&' : ''}msg=${encodeURIComponent(msg)}`;
+
+async function handleMockups(req, res, url) {
+  const key = url.searchParams.get('key');
+  const html = (body) => {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+    return res.end(body);
+  };
+  const redirect = (to) => {
+    res.writeHead(303, { Location: to });
+    return res.end();
+  };
+  const msg = url.searchParams.get('msg') || '';
+  const bad = url.searchParams.get('bad') === '1';
+  if (req.method === 'GET' && url.pathname === '/mockups') {
+    const tag = url.searchParams.get('tag');
+    if (!tag) return html(renderMockupHome({ key, tags: designTags(await listTagged('')), msg }));
+    return html(renderMockupGroup({ key, tag, products: (await listTagged(tag)).filter((p) => p.colors.length), msg, bad }));
+  }
+  if (req.method === 'GET' && url.pathname === '/mockups/product') {
+    const product = await loadProduct(url.searchParams.get('id') || '');
+    if (!product) return redirect(withMsg(`/mockups?key=${encodeURIComponent(key)}`, 'That product no longer exists.', true));
+    return html(renderMockupProduct({ key, product, tag: url.searchParams.get('tag') || '', msg, bad }));
+  }
+  if (req.method === 'POST' && url.pathname === '/mockups/make') {
+    const body = JSON.parse((await readBody(req)).toString() || '{}');
+    let out;
+    try {
+      out = await makeMockups(String(body.id || ''), { design: body.design || null, force: Boolean(body.force) });
+    } catch (e) {
+      log('mockups: make failed:', e.message);
+      out = { error: e.message };
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify(out));
+  }
+  if (req.method === 'POST' && url.pathname === '/mockups/art') {
+    let back = '/mockups';
+    try {
+      const form = await readMultipart(req);
+      back = sameSite(form.get('back'));
+      const file = form.get('art');
+      const design = String(form.get('design') || '');
+      if (!file || typeof file === 'string' || !file.size) return redirect(withMsg(back, 'Choose an art file first.', true));
+      const tag = String(form.get('tag') || '');
+      const ids = tag
+        ? (await listTagged(tag)).filter((p) => p.designs.includes(design)).map((p) => p.id)
+        : [String(form.get('id') || '')];
+      const r = await saveArt({ productIds: ids, design, buf: Buffer.from(await file.arrayBuffer()), filename: file.name || 'art.png', mimeType: file.type });
+      return redirect(withMsg(back, r.dryRun ? `Dry run: would save ${design} art on ${r.products} product(s).` : `Saved ${design} art on ${r.products} product${r.products === 1 ? '' : 's'}. Check the preview, then make the mockups.`));
+    } catch (e) {
+      log('mockups: art upload failed:', e.message);
+      return redirect(withMsg(back, e.message, true));
+    }
+  }
+  if (req.method === 'POST' && ['/mockups/place', '/mockups/photo', '/mockups/hide'].includes(url.pathname)) {
+    const form = Object.fromEntries(new URLSearchParams((await readBody(req)).toString()));
+    const back = sameSite(form.back);
+    try {
+      if (url.pathname === '/mockups/place') {
+        await savePlace(form.id, { x: form.x, y: form.y, w: form.w, h: form.h });
+        return redirect(withMsg(back, 'Placement saved. Mockups made before now show "needs remake".'));
+      }
+      if (url.pathname === '/mockups/photo') {
+        await savePhoto(form.id, form.color, form.url || '');
+        return redirect(withMsg(back, `Photo for ${form.color} saved.`));
+      }
+      const r = await hidePlainPhotos(form.id);
+      return redirect(withMsg(back, r.dryRun ? `Dry run: would hide ${r.wouldHide} photo(s).` : `Took ${r.hidden} plain photo${r.hidden === 1 ? '' : 's'} off the product page.`));
+    } catch (e) {
+      log('mockups:', e.message);
+      return redirect(withMsg(back, e.message, true));
+    }
+  }
+  res.writeHead(404);
+  return res.end('not found');
+}
 
 function readBody(req) {
   return new Promise((resolve, reject) => {
@@ -33,6 +127,14 @@ export function createServer() {
         const key = url.searchParams.get('key') || '';
         return key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
       };
+      // Mockups: its own key.
+      if (url.pathname === '/mockups' || url.pathname.startsWith('/mockups/')) {
+        if (!keyOk(mockupsKey())) {
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('This link is missing its key. Ask the owner for the Mockups link.');
+        }
+        return await handleMockups(req, res, url);
+      }
       // Add a blank: its own key, so the reorder link alone can't create products.
       if (url.pathname.startsWith('/add-blank')) {
         if (!keyOk(addBlankKey())) {

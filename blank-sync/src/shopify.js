@@ -4,6 +4,11 @@ import { config } from './config.js';
 
 let cachedToken = null; // { token, expiresAt }
 
+/** Forget the token, so the next call gets a new one (with any permissions approved since). */
+export function clearAccessToken() {
+  cachedToken = null;
+}
+
 export async function getAccessToken(fetchImpl = fetch) {
   if (config.accessToken) return config.accessToken;
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.token;
