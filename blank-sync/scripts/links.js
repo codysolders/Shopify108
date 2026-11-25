@@ -2,6 +2,7 @@
 import { config } from '../src/config.js';
 import { reorderKey } from '../src/restock.js';
 import { addBlankKey } from '../src/addBlank.js';
+import { mockupsKey } from '../src/mockups.js';
 
 if (!config.clientSecret) {
   console.log('No client secret found. Run this in Cloud Shell from ~/Shopify108/blank-sync.');
@@ -9,3 +10,4 @@ if (!config.clientSecret) {
 }
 console.log(`Reorder list:  ${config.appUrl}/reorder?key=${reorderKey()}`);
 console.log(`Add a blank:   ${config.appUrl}/add-blank?key=${addBlankKey()}`);
+console.log(`Mockups:       ${config.appUrl}/mockups?key=${mockupsKey()}`);
