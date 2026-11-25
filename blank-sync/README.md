@@ -102,6 +102,21 @@ npm run check
 Watch the logs for the first few orders with
 `gcloud run services logs read blank-sync --region us-west1`.
 
+## Sharing with employees (Secret Manager)
+
+So employees never handle the Shopify keys, the owner stores them in Google Cloud Secret Manager once.
+In Cloud Shell, from this folder (with a working `.env`):
+
+```bash
+node scripts/store-secrets.js
+node scripts/add-employee.js person@example.com
+```
+
+After that, anyone you add can clone the repo in their own Cloud Shell and run `npm run check` or
+`npm run resync` with no `.env`: the app reads the keys from Secret Manager. Remove someone with
+`node scripts/add-employee.js person@example.com --remove`. If you change the Client secret in Shopify,
+run `node scripts/make-env.js` and `node scripts/store-secrets.js` again.
+
 ## Good to know
 
 - Orders are tagged `blanks-deducted` once their blanks are taken, so the same order is never
