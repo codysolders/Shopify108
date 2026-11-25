@@ -2,6 +2,7 @@
 import { config } from './config.js';
 import { graphql, gid } from './shopify.js';
 import { getBlankMap, invalidateBlankMap } from './blankMap.js';
+import { handleDesignProductWebhook } from './designSetup.js';
 import { adjustBlanks, getAvailable, setDesignQuantities, getDefaultLocationId } from './inventory.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -105,7 +106,7 @@ export const topicHandlers = {
   'orders/create': handleOrderCreated,
   'refunds/create': handleRefundCreated,
   'inventory_levels/update': handleInventoryLevelUpdate,
-  'products/update': handleProductChanged,
-  'products/create': handleProductChanged,
+  'products/update': handleDesignProductWebhook,
+  'products/create': handleDesignProductWebhook,
   'products/delete': handleProductChanged,
 };
