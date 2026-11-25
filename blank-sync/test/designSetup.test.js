@@ -149,3 +149,17 @@ test('template input: one Design value times every color and size, linked and dr
   assert.ok(input.variants.every((v) => v.inventoryPolicy === 'DENY' && v.inventoryItem.tracked));
   assert.equal(input.metafields[0].value, B);
 });
+
+test('suggested tag is the unique style number', async () => {
+  const { suggestTag } = await import('../src/designSetup.js');
+  const products = [
+    { id: '1', title: 'Gildan Soft Style Inventory G640', isDesign: false, isBlank: true },
+    { id: '2', title: 'Gildan 64200 Unisex Softstyle Tank Top Inventory', isDesign: false, isBlank: true },
+    { id: '3', title: 'Gildan Hoodie Inventory', isDesign: false, isBlank: true },
+    { id: '4', title: 'Gildan Inventory', isDesign: false, isBlank: true },
+  ];
+  assert.equal(suggestTag(products[0], products), 'blank:G640');
+  assert.equal(suggestTag(products[1], products), 'blank:64200');
+  assert.equal(suggestTag(products[2], products), 'blank:Hoodie');
+  assert.equal(suggestTag(products[3], products), null);
+});

@@ -70,6 +70,21 @@ export function pickBlankForTag(value, products, selfId) {
   return blanks.length === 1 ? blanks[0] : null;
 }
 
+/**
+ * Pure: the shortest tag that picks this blank and no other, preferring the style number
+ * ("Gildan Soft Style Inventory G640" -> "blank:G640"). Null if no word in its name is unique.
+ */
+export function suggestTag(blank, products) {
+  const words = [...new Set(String(blank.title).split(/[^A-Za-z0-9-]+/).filter((w) => w.length >= 2))];
+  const score = (w) => (/\d/.test(w) ? 0 : /^(inventory|blanks?|unisex|the|and|with)$/i.test(w) ? 2 : 1);
+  words.sort((a, b) => score(a) - score(b) || a.length - b.length);
+  for (const w of words) {
+    if (score(w) === 2) continue;
+    if (pickBlankForTag(w.toLowerCase(), products, null)?.id === blank.id) return `blank:${w}`;
+  }
+  return null;
+}
+
 export async function listProducts(gql = graphql) {
   const out = [];
   let after = null;
