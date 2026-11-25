@@ -8,7 +8,7 @@
 //   custom.mockup_made    { "Design 1|black": { media, hash } }              mockups already made
 import crypto from 'node:crypto';
 import { config } from './config.js';
-import { graphql } from './shopify.js';
+import { graphql, clearAccessToken } from './shopify.js';
 import { normValue } from './matching.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -331,19 +331,27 @@ mutation SF($m: [MetafieldsSetInput!]!) { metafieldsSet(metafields: $m) { userEr
 const errs = (list) => {
   if (list?.length) {
     const msg = list.map((e) => e.message).join('; ');
-    if (/access denied|write_files|read_files/i.test(msg)) throw new Error(SCOPE_HELP);
+    if (/access denied|write_files|read_files/i.test(msg)) {
+      clearAccessToken();
+      throw new Error(`${SCOPE_HELP} (Shopify said: ${msg.slice(0, 200)})`);
+    }
     throw new Error(msg);
   }
 };
 export const SCOPE_HELP =
   'Blank Sync needs permission to add files. In the Shopify Dev Dashboard, open Blank Sync, create a new version with ' +
-  'read_files and write_files added to the scopes, release it, and approve it on the store.';
+  'read_files and write_files added to the scopes and release it. Then in Shopify admin, open Settings, Apps, Blank Sync ' +
+  'and approve the new permissions if it asks. Try again after that.';
 
 const wrap = async (p) => {
   try {
     return await p;
   } catch (e) {
-    if (/access denied|ACCESS_DENIED|write_files|read_files/i.test(e.message)) throw new Error(SCOPE_HELP);
+    if (e.message.startsWith(SCOPE_HELP)) throw e;
+    if (/access denied|ACCESS_DENIED|write_files|read_files/i.test(e.message)) {
+      clearAccessToken();
+      throw new Error(`${SCOPE_HELP} (Shopify said: ${e.message.slice(0, 200)})`);
+    }
     throw e;
   }
 };
