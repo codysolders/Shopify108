@@ -149,7 +149,7 @@ export async function addExactLinks(result, fetchImpl = fetch) {
     for (const l of g.lines) {
       if (l.exactLink || !l.reorderUrl) continue;
       const exact = await exactSupplierLink(l.reorderUrl, l.selectedOptions, fetchImpl);
-      l.exactLink = exact !== l.reorderUrl;
+      l.exactLink = /[?&]variant=\d+/.test(exact) && exact !== l.reorderUrl;
       l.reorderUrl = exact;
     }
   }
