@@ -140,3 +140,11 @@ test('design tags skip Blank Sync tags and templates', () => {
   ]);
   assert.deepEqual(tags, [{ tag: 'union-3711', count: 1 }]);
 });
+
+test('empty see-through edges are cut off the art', async () => {
+  const inner = await sharp({ create: { width: 50, height: 30, channels: 4, background: { r: 255, g: 0, b: 0, alpha: 1 } } }).png().toBuffer();
+  const art = await sharp({ create: { width: 200, height: 200, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: inner, left: 40, top: 60 }]).png().toBuffer();
+  const meta = await sharp(await m.trimArt(art)).metadata();
+  assert.deepEqual([meta.width, meta.height], [50, 30]);
+});

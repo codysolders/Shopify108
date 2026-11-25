@@ -199,6 +199,18 @@ async function sharp() {
   return sharpLib;
 }
 
+/** Cut empty see-through edges off the art, so the print box size means the art's real size. */
+export async function trimArt(buf) {
+  const s = await sharp();
+  const meta = await s(buf).metadata();
+  if (!meta.hasAlpha) return buf;
+  try {
+    return await s(buf).trim({ background: { r: 0, g: 0, b: 0, alpha: 0 }, threshold: 1 }).toBuffer();
+  } catch {
+    return buf; // nothing to trim
+  }
+}
+
 export async function fetchImage(url, fetchImpl = fetch) {
   const res = await fetchImpl(url);
   if (!res.ok) throw new Error(`Could not download ${fileName(url)} (${res.status})`);
@@ -449,8 +461,10 @@ const safeName = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').repl
  * Returns { url, products }.
  */
 export async function saveArt({ productIds, design, buf, filename, mimeType }, gql = graphql) {
+  buf = Buffer.from(buf);
   if (!/^image\/(png|jpeg|webp)$/.test(mimeType)) throw new Error('Art must be a PNG (best, with a see-through background), JPG or WebP.');
   if (config.dryRun) return { dryRun: true, products: productIds.length };
+  buf = await trimArt(buf);
   const ext = mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
   const resourceUrl = await wrap(stageUpload(buf, `art-${safeName(design)}-${safeName(filename.replace(/\.[^.]+$/, ''))}.${ext}`, mimeType, gql));
   const r = (await wrap(gql(FILE_CREATE, { files: [{ originalSource: resourceUrl, contentType: 'IMAGE', alt: `Mockup art: ${design}` }] }))).fileCreate;
