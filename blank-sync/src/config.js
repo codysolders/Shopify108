@@ -1,6 +1,7 @@
 // Reads settings from environment variables (and a local .env file if present).
 import fs from 'node:fs';
 import path from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 function loadDotEnv() {
   const file = path.resolve(process.cwd(), '.env');
@@ -12,7 +13,34 @@ function loadDotEnv() {
   }
 }
 
+// Names of the Google Cloud Secret Manager secrets that hold the app's settings.
+export const SECRET_NAMES = {
+  SHOPIFY_SHOP: 'blank-sync-shop',
+  SHOPIFY_CLIENT_ID: 'blank-sync-client-id',
+  SHOPIFY_CLIENT_SECRET: 'blank-sync-client-secret',
+};
+
+// In Cloud Shell, fill in anything missing from Google Cloud Secret Manager,
+// so employees never need to handle the keys themselves.
+function loadFromSecretManager() {
+  if (process.env.K_SERVICE) return; // running on Cloud Run: settings come from the service
+  for (const [envName, secret] of Object.entries(SECRET_NAMES)) {
+    if (process.env[envName]) continue;
+    try {
+      const value = execFileSync('gcloud', ['secrets', 'versions', 'access', 'latest', `--secret=${secret}`], {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+        timeout: 20_000,
+      }).trim();
+      if (value) process.env[envName] = value;
+    } catch {
+      // gcloud missing, no access, or secret not created yet: fall through to the usual error.
+    }
+  }
+}
+
 loadDotEnv();
+loadFromSecretManager();
 
 export const config = {
   shop: (process.env.SHOPIFY_SHOP || '').replace(/\.myshopify\.com$/, ''),
@@ -38,5 +66,11 @@ export function requireShopConfig() {
   if (!config.accessToken && !(config.clientId && config.clientSecret)) {
     missing.push('SHOPIFY_CLIENT_ID + SHOPIFY_CLIENT_SECRET (or SHOPIFY_ACCESS_TOKEN)');
   }
-  if (missing.length) throw new Error(`Missing settings: ${missing.join(', ')}`);
+  if (missing.length) {
+    throw new Error(
+      `Missing settings: ${missing.join(', ')}. ` +
+        'In Cloud Shell, check that the right project is selected and that your Google account can read the ' +
+        'blank-sync secrets (Secret Manager Secret Accessor). Or run "node scripts/make-env.js".',
+    );
+  }
 }
