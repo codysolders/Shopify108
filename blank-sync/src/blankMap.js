@@ -27,6 +27,7 @@ query Variants($id: ID!, $after: String) {
         id
         title
         inventoryPolicy
+        inventoryQuantity
         selectedOptions { name value }
         inventoryItem { id tracked }
         override: metafield(namespace: "${config.blankVariantMetafield.namespace}", key: "${config.blankVariantMetafield.key}") {
@@ -63,6 +64,7 @@ export async function fetchVariants(productId, gql = graphql) {
         id: v.id,
         title: v.title,
         inventoryPolicy: v.inventoryPolicy,
+        inventoryQuantity: v.inventoryQuantity,
         selectedOptions: v.selectedOptions,
         inventoryItemId: v.inventoryItem.id,
         tracked: v.inventoryItem.tracked,

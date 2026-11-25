@@ -6,6 +6,8 @@ import { verifyWebhook } from './shopify.js';
 import { topicHandlers } from './handlers.js';
 import { getBlankMap } from './blankMap.js';
 import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey, addExactLinks } from './restock.js';
+import { addBlankKey, createBlank, colorsFromLink, blankLists, renderAddBlankPage, addColorsToBlank, newSupplierColors } from './addBlank.js';
+import { createTemplate } from './templates.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -27,11 +29,53 @@ export function createServer() {
         return res.end(`blank-sync ok${config.dryRun ? ' (dry run)' : ''}`);
       }
       const url = new URL(req.url, 'http://x');
-      const keyOk = () => {
+      const keyOk = (expected = reorderKey()) => {
         const key = url.searchParams.get('key') || '';
-        const expected = reorderKey();
         return key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
       };
+      // Add a blank: its own key, so the reorder link alone can't create products.
+      if (url.pathname.startsWith('/add-blank')) {
+        if (!keyOk(addBlankKey())) {
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('This link is missing its key. Ask the owner for the Add a blank link.');
+        }
+        const key = url.searchParams.get('key');
+        const page = async (args) => {
+          const html = renderAddBlankPage({ key, ...(await blankLists()), ...args });
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+          return res.end(html);
+        };
+        if (req.method === 'GET' && url.pathname === '/add-blank/colors') {
+          const link = url.searchParams.get('url') || '';
+          const colors = /^https:\/\//i.test(link) ? await colorsFromLink(link).catch(() => []) : [];
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          return res.end(JSON.stringify({ colors }));
+        }
+        if (req.method === 'GET' && url.pathname === '/add-blank/supplier-colors') {
+          const out = await newSupplierColors(url.searchParams.get('id') || '').catch(() => ({ colors: [], note: 'Could not read the supplier page.' }));
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          return res.end(JSON.stringify(out));
+        }
+        if (req.method === 'POST' && url.pathname === '/add-blank/colors') {
+          const form = Object.fromEntries(new URLSearchParams((await readBody(req)).toString()));
+          const result = await addColorsToBlank(form.id, form.colors);
+          if (result.colorsAdded) log(`add-blank: added ${result.colorsAdded.added.join(', ')} to ${result.colorsAdded.blank.title}`);
+          return page({ result });
+        }
+        if (req.method === 'GET' && url.pathname === '/add-blank') return page({});
+        if (req.method === 'POST' && url.pathname === '/add-blank') {
+          const form = Object.fromEntries(new URLSearchParams((await readBody(req)).toString()));
+          form.template = form.template === '1';
+          const result = await createBlank(form);
+          if (result.blank) log(`add-blank: created ${result.blank.title}`);
+          return page({ form: result.errors || result.dryRun ? form : {}, result });
+        }
+        if (req.method === 'POST' && url.pathname === '/add-blank/template') {
+          const form = Object.fromEntries(new URLSearchParams((await readBody(req)).toString()));
+          const t = await createTemplate(form.id);
+          return page({ result: t.dryRun ? { dryRun: true, title: t.product.title, variants: t.variants } : { templateOnly: t } });
+        }
+      }
       // Called every morning by Cloud Scheduler. ?test=1 sends even when nothing is low.
       if (req.method === 'POST' && url.pathname === '/tasks/reorder-email') {
         if (!keyOk()) {

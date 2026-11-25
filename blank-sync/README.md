@@ -15,18 +15,42 @@ design product use it.
 - **Selling a blank directly** (for example ringing up a plain shirt at the shop) works like it does
   today. Shopify takes it off the blank, and the designs update to match.
 
-## How to link a design to its blank
+## Adding a new design
 
-1. Open the design product in Shopify admin.
-2. In the **Blank product** field (under Metafields), pick the blank, for example
-   "Gildan Soft Style Inventory G640".
-3. That's it. Variants are matched by **Color** and **Size** automatically. "Medium" matches "M",
-   "XXL" matches "2XL", and "Gray" matches "Grey". The Design option is ignored.
+Pick whichever is easiest. Either way the app does the rest within a few seconds of saving:
+it links the design, turns on inventory tracking, stops overselling, and copies the blank's counts.
+
+- **Duplicate the template.** Each blank has a draft product called `TEMPLATE - <blank> design`.
+  Click **Duplicate**, rename it, change the **Design** value, set the price and photos, publish.
+- **Use a tag.** On any product with Color and Size options, add the tag `blank:G640` (any word or
+  style number that appears in only one blank's name).
+- **Pick the field.** In the **Blank product** field (under Metafields), pick the blank.
+
+Variants are matched by **Color** and **Size**. "Medium" matches "M", "XXL" matches "2XL", and
+"Gray" matches "Grey". The Design option is ignored. If a design has a color or size the blank
+doesn't have (or the tag matches no blank), the product gets the tag `blank-sync-needs-review`.
+Filter products by that tag to find them; the tag comes off by itself once it's fixed.
 
 If one variant needs a different blank than its color and size suggest, set **Blank variant
 (override)** on that variant.
 
 Run `npm run check` at any time to see which designs are linked and any variants that didn't match.
+
+## Adding a new blank
+
+Open the **Add a blank** page (run `npm run links` in Cloud Shell to get the private link). Fill in
+the name with its style number, supplier, link, colors (or press **Get colors from this link**), sizes,
+"Reorder at" and order quantity. It creates the blank product (tracked, never oversold, not on the
+online store) and its design template. Then count your shirts and enter the numbers in Shopify.
+
+**New colors for a blank you already have:** on the same page, under **Add colors to a blank**,
+pick the blank and type the colors (or press **Show supplier colors I don't have**). Every size is
+added at 0. Colors added in Shopify admin work too: whenever a blank gains a color or size, the app
+adds it to that blank's design template automatically. Existing designs are left alone, so each
+design only offers the colors you choose.
+
+The same page has **Make template** buttons for blanks that don't have one yet. From Cloud Shell:
+`npm run template -- 64200`.
 
 ## One-time setup
 
