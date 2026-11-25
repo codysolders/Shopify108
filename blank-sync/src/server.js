@@ -1,9 +1,11 @@
 // HTTP server: receives Shopify webhooks.
 import http from 'node:http';
+import crypto from 'node:crypto';
 import { config, requireShopConfig } from './config.js';
 import { verifyWebhook } from './shopify.js';
 import { topicHandlers } from './handlers.js';
 import { getBlankMap } from './blankMap.js';
+import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey } from './restock.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -22,6 +24,18 @@ export function createServer() {
       if (req.method === 'GET' && (req.url === '/' || req.url === '/health')) {
         res.writeHead(200, { 'Content-Type': 'text/plain' });
         return res.end(`blank-sync ok${config.dryRun ? ' (dry run)' : ''}`);
+      }
+      if (req.method === 'GET' && req.url.startsWith('/reorder')) {
+        const key = new URL(req.url, 'http://x').searchParams.get('key') || '';
+        const expected = reorderKey();
+        const ok = key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
+        if (!ok) {
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('This link is missing its key. Ask the owner for the reorder page link.');
+        }
+        const html = renderReorderPage(computeReorder(await fetchBlanksForRestock()));
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+        return res.end(html);
       }
       if (req.method === 'POST' && req.url.startsWith('/webhooks')) {
         const raw = await readBody(req);

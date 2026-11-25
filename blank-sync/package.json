@@ -10,6 +10,7 @@
     "test": "node --test test/*.test.js",
     "setup": "node scripts/setup.js",
     "check": "node scripts/check.js",
-    "resync": "node scripts/resync.js"
+    "resync": "node scripts/resync.js",
+    "reorder": "node scripts/reorder.js"
   }
 }
