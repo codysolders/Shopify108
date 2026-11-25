@@ -9,9 +9,9 @@ const productJs = {
     { id: 222, options: ['Sport Grey', 'XXL'] },
   ],
 };
-const fakeFetch = (body, ok = true) => async (url) => {
-  fakeFetch.lastUrl = url;
-  return { ok, json: async () => body };
+const fakeFetch = (body, ok = true, html = '') => async (url) => {
+  if (url.endsWith('.js')) fakeFetch.lastUrl = url;
+  return { ok, json: async () => body, text: async () => html };
 };
 const opts = (c, s) => [{ name: 'Color', value: c }, { name: 'Size', value: s }];
 const LINK = 'https://ninjatransfers.com/products/gildan-g640?variant=42485252325459&srsltid=abc';
@@ -49,6 +49,28 @@ test('fuzzy-matches small color name differences when only one color fits', asyn
   assert.equal(await exactSupplierLink(LINK, opts('Heather Cardinal Red', 'M'), fakeFetch(js)), 'https://ninjatransfers.com/products/gildan-g640?variant=1');
   assert.equal(await exactSupplierLink(LINK, opts('Heather Purple', 'M'), fakeFetch(js)), 'https://ninjatransfers.com/products/gildan-g640?variant=2');
   assert.equal(await exactSupplierLink(LINK, opts('Heather Irish Green', 'M'), fakeFetch(js)), 'https://ninjatransfers.com/products/gildan-g640?variant=3');
-  // "Green" fits both Irish Green colors: ambiguous, so no guess
-  assert.equal(await exactSupplierLink(LINK, opts('Green', 'M'), fakeFetch(js)), 'https://ninjatransfers.com/products/gildan-g640');
+  // a heather color never matches a plain one, so "Green" can only be "Irish Green"
+  assert.equal(await exactSupplierLink(LINK, opts('Green', 'M'), fakeFetch(js)), 'https://ninjatransfers.com/products/gildan-g640?variant=4');
+});
+
+test('Ninja-style names: heather stays heather, abbreviations expand', async () => {
+  const js = { options: ['Color', 'Size'], variants: [
+    { id: 10, options: ['Heather Cardinal', 'S'] },
+    { id: 11, options: ['Cardinal Red', 'S'] },
+    { id: 12, options: ['Hthr Irish Green', 'S'] },
+    { id: 13, options: ['Irish Green', 'S'] },
+  ] };
+  const f = fakeFetch(js);
+  assert.equal(await exactSupplierLink(LINK, opts('Heather Cardinal Red', 'S'), f), 'https://ninjatransfers.com/products/gildan-g640?variant=10');
+  assert.equal(await exactSupplierLink(LINK, opts('Heather Irish Green', 'S'), f), 'https://ninjatransfers.com/products/gildan-g640?variant=12');
+  assert.equal(await exactSupplierLink(LINK, opts('Cardinal Red', 'S'), f), 'https://ninjatransfers.com/products/gildan-g640?variant=11');
+});
+
+test('colors past the product.js limit are read from the product page', async () => {
+  const js = { options: ['Color', 'Size'], variants: [{ id: 1, options: ['Black', 'S'] }] };
+  const html = '<script>var meta = {"variants":[{"id":4001,"title":"Royal \\/ S","option1":"Royal","option2":"S","option3":null},'
+    + '{"id":4002,"title":"Sport Grey \\/ M","option1":"Sport Grey","option2":"M","option3":null}]}</script>';
+  const f = fakeFetch(js, true, html);
+  assert.equal(await exactSupplierLink(LINK, opts('Royal Blue', 'S'), f), 'https://ninjatransfers.com/products/gildan-g640?variant=4001');
+  assert.equal(await exactSupplierLink(LINK, opts('Sport Gray', 'M'), f), 'https://ninjatransfers.com/products/gildan-g640?variant=4002');
 });
