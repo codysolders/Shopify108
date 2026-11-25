@@ -1,11 +1,11 @@
 // Prints the reorder list in the console, and the private link to the reorder page.
 // Usage: npm run reorder
 import { requireShopConfig } from '../src/config.js';
-import { fetchBlanksForRestock, computeReorder, reorderKey } from '../src/restock.js';
+import { fetchBlanksForRestock, computeReorder, reorderKey, addExactLinks } from '../src/restock.js';
 
 requireShopConfig();
 const APP_URL = process.env.APP_URL || 'https://blank-sync-478869332742.us-west1.run.app';
-const { groups, notSet, lowCount } = computeReorder(await fetchBlanksForRestock());
+const { groups, notSet, lowCount } = await addExactLinks(computeReorder(await fetchBlanksForRestock()));
 
 if (!lowCount) console.log('Nothing to reorder. Every blank is above its minimum.');
 for (const g of groups) {

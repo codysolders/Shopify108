@@ -77,6 +77,14 @@ const definitions = [
     description: "Optional. Overrides the product's Reorder at for this color/size.",
   },
   {
+    name: 'Reorder link',
+    namespace: 'custom',
+    key: 'reorder_url',
+    type: 'url',
+    ownerType: 'PRODUCTVARIANT',
+    description: "Optional. The supplier's page for exactly this color/size, if the automatic link is wrong.",
+  },
+  {
     name: 'Order quantity',
     namespace: 'custom',
     key: 'reorder_qty',

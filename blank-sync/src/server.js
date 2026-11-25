@@ -5,7 +5,7 @@ import { config, requireShopConfig } from './config.js';
 import { verifyWebhook } from './shopify.js';
 import { topicHandlers } from './handlers.js';
 import { getBlankMap } from './blankMap.js';
-import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey } from './restock.js';
+import { fetchBlanksForRestock, computeReorder, renderReorderPage, reorderKey, addExactLinks } from './restock.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -42,7 +42,7 @@ export function createServer() {
           res.writeHead(200);
           return res.end('email not set up');
         }
-        const result = computeReorder(await fetchBlanksForRestock());
+        const result = await addExactLinks(computeReorder(await fetchBlanksForRestock()));
         const test = url.searchParams.get('test') === '1';
         if (!result.lowCount && !test) {
           res.writeHead(200);
@@ -65,7 +65,7 @@ export function createServer() {
           res.writeHead(403, { 'Content-Type': 'text/plain' });
           return res.end('This link is missing its key. Ask the owner for the reorder page link.');
         }
-        const html = renderReorderPage(computeReorder(await fetchBlanksForRestock()));
+        const html = renderReorderPage(await addExactLinks(computeReorder(await fetchBlanksForRestock())));
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
         return res.end(html);
       }

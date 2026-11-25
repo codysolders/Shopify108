@@ -3,6 +3,7 @@ import crypto from 'node:crypto';
 import { config } from './config.js';
 import { graphql } from './shopify.js';
 import { fetchDesignProducts } from './blankMap.js';
+import { exactSupplierLink } from './supplierLinks.js';
 
 const DEFAULT_ORDER_QTY = 12;
 
@@ -33,6 +34,8 @@ query BlankVariants($id: ID!, $after: String) {
         title
         sku
         inventoryQuantity
+        selectedOptions { name value }
+        reorderUrl: metafield(namespace: "custom", key: "reorder_url") { value }
         media(first: 1) { nodes { preview { image { url(transform: { maxWidth: 160 }) } } } }
         reorderAt: metafield(namespace: "custom", key: "reorder_at") { value }
         reorderQty: metafield(namespace: "custom", key: "reorder_qty") { value }
@@ -80,6 +83,8 @@ export async function fetchBlanksForRestock(gql = graphql) {
           title: v.title,
           sku: v.sku,
           available: v.inventoryQuantity ?? 0,
+          selectedOptions: v.selectedOptions || [],
+          reorderUrl: v.reorderUrl?.value || null,
           image: img(v.media?.nodes?.[0]),
           reorderAt: int(v.reorderAt),
           reorderQty: int(v.reorderQty),
@@ -117,7 +122,9 @@ export function computeReorder(products) {
         reorderAt,
         orderQty,
         image: v.image || p.image,
-        reorderUrl: p.reorderUrl,
+        reorderUrl: v.reorderUrl || p.reorderUrl,
+        exactLink: Boolean(v.reorderUrl),
+        selectedOptions: v.selectedOptions || [],
       };
       if (!bySupplier.has(p.supplier)) bySupplier.set(p.supplier, []);
       bySupplier.get(p.supplier).push(line);
@@ -131,6 +138,22 @@ export function computeReorder(products) {
     }))
     .sort((a, b) => a.supplier.localeCompare(b.supplier));
   return { groups, notSet, lowCount: groups.reduce((s, g) => s + g.lines.length, 0) };
+}
+
+/**
+ * Point each line's Order button at the supplier's exact color/size where possible
+ * (a variant's own Reorder link always wins). Mutates and returns the result.
+ */
+export async function addExactLinks(result, fetchImpl = fetch) {
+  for (const g of result.groups) {
+    for (const l of g.lines) {
+      if (l.exactLink || !l.reorderUrl) continue;
+      const exact = await exactSupplierLink(l.reorderUrl, l.selectedOptions, fetchImpl);
+      l.exactLink = exact !== l.reorderUrl;
+      l.reorderUrl = exact;
+    }
+  }
+  return result;
 }
 
 /** The secret part of the reorder page link, derived from the app's client secret. */
@@ -156,7 +179,7 @@ export function renderReorderPage({ groups, notSet, lowCount }, now = new Date()
   <td class="n ${l.available <= 0 ? 'out' : ''}">${l.available}</td>
   <td class="n">${l.reorderAt}</td>
   <td class="n b">${l.orderQty}</td>
-  <td>${l.reorderUrl ? `<a class="btn" href="${esc(l.reorderUrl)}" target="_blank" rel="noopener">Order</a>` : '<span class="v">No link</span>'}</td>
+  <td>${l.reorderUrl ? `<a class="btn" href="${esc(l.reorderUrl)}" target="_blank" rel="noopener">${l.exactLink ? 'Order' : 'Supplier page'}</a>` : '<span class="v">No link</span>'}</td>
 </tr>`,
         )
         .join('\n');
