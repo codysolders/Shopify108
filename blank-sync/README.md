@@ -148,6 +148,33 @@ the store page once every color has mockups (they stay in Files).
 The page needs the `read_files` and `write_files` scopes on the app (see setup step 1).
 Saved per product in JSON metafields: `custom.mockup_art`, `mockup_place`, `mockup_photos`, `mockup_made`.
 
+## Custom orders: customers upload their own art
+
+Any product tagged **Upload** shows an "Upload your art" box on its store page (once the theme has
+the snippet below). The customer picks the blank, color and size as usual, then uploads a PNG, JPG,
+PDF, SVG, AI, EPS or PSD (25 MB max). The file is saved in Shopify Files (named `customer-art-...`)
+and its link goes on the order as the **Artwork** line property. Add to cart is blocked until the
+upload finishes. Orders with art are tagged `custom-art`.
+
+The private **Custom orders** page (`npm run links` prints its link) lists recent orders with art,
+with a download button for each file. It also flags orders where the old upload button lost the file.
+
+Theme snippet (a **Custom Liquid** block in the product information section of the product template):
+
+```liquid
+{% if product.tags contains 'Upload' %}
+  <div data-blank-sync-art></div>
+  <script src="https://blank-sync-478869332742.us-west1.run.app/art-upload.js" defer></script>
+{% endif %}
+```
+
+Add `data-required="false"` to the div to make the upload optional. For gang sheets, use
+`<div data-blank-sync-art data-max-files="10" data-questions="gang"></div>`: customers can upload up to 10
+designs (saved as Artwork, Artwork 2, ...) and must answer how big to print, how many copies and whether to
+remove the background, with an optional notes box. The answers show on the order and the Custom orders page. Uploads are only accepted from
+the store's own web addresses (add others with the `ART_ORIGINS` setting) and at most 30 an hour
+from one address.
+
 ## Restock minimums and the reorder list
 
 On each **blank** product in Shopify, fill in (under Metafields):
@@ -192,6 +219,7 @@ run `node scripts/make-env.js` and `node scripts/store-secrets.js` again.
 
 - Node 20+. Dependencies: nodemailer (email) and sharp (mockup images). `npm test` runs the tests.
 - `src/mockups.js` and `src/mockupPage.js`: the Mockups page and image generator.
+- `src/artUpload.js`, `src/artScript.js`, `src/customOrdersPage.js`: customer art upload and the Custom orders page.
 - `src/matching.js`: pure matching of design variants to blank variants.
 - `src/blankMap.js`: reads linked products from Shopify and builds the lookup index (cached 5 minutes,
   cleared on product webhooks).

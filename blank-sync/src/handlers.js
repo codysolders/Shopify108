@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { graphql, gid } from './shopify.js';
 import { getBlankMap, invalidateBlankMap } from './blankMap.js';
 import { handleDesignProductWebhook } from './designSetup.js';
+import { orderHasArt, ART_TAG } from './artUpload.js';
 import { adjustBlanks, getAvailable, setDesignQuantities, getDefaultLocationId } from './inventory.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -42,6 +43,14 @@ export async function handleOrderCreated(order, deps = {}) {
   if (tags.includes(config.processedTag)) {
     log(`order ${order.name || order.id}: already processed`);
     return { skipped: true };
+  }
+  if (orderHasArt(order) && !tags.includes(ART_TAG) && !config.dryRun) {
+    try {
+      await gql(TAGS_ADD, { id: gid('Order', order.id), tags: [ART_TAG] });
+      log(`order ${order.name || order.id}: has customer art, tagged ${ART_TAG}`);
+    } catch (e) {
+      log(`order ${order.name || order.id}: could not add ${ART_TAG} tag: ${e.message}`);
+    }
   }
   const map = await getBlankMap({ gql });
   const locationId = order.location_id ? gid('Location', order.location_id) : await getDefaultLocationId(gql);
