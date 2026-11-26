@@ -5,7 +5,7 @@
 // demand (art on the blank photo of that color), so the printers see exactly what was ordered.
 import { config } from './config.js';
 import { graphql, gid } from './shopify.js';
-import { cleanPlace, colorOption, colorKey, isMockup, parseJson, fetchImage, composeMockup, trimArt } from './mockups.js';
+import { cleanPlace, colorOption, designOption, colorKey, isMockup, parseJson, fetchImage, composeMockup, trimArt } from './mockups.js';
 
 export const DESIGNER_TAG = 'Designer';
 export const MOCKUP_PROPERTY = 'Mockup';
@@ -14,6 +14,8 @@ export const PLACE_PROPERTY = '_Placement';
 // the collar. Staff can change it per product on the Mockups page (Save placement).
 export const PRINT_AREA = { x: 0.5, y: 0.22, w: 0.36, h: 0.34 };
 export const PRINT_WIDTH_IN = 12;
+// A Design value like "Your art" means the shopper uploads; any other value is a ready-made design.
+export const isUploadDesign = (value) => /your\s*(own\s*)?(art|design|file|logo)|upload|custom/i.test(String(value || ''));
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
 
@@ -68,15 +70,21 @@ export async function designerProduct(id, gql = graphql) {
     const photos = {};
     for (const c of colorOption(p.options)?.values || []) if (byKey[colorKey(c)]) photos[c] = byKey[colorKey(c)];
     const optName = colorOption(p.options)?.name;
+    const designName = designOption(p.options)?.name;
     const variants = {};
+    const ready = [];
     for (const v of p.variants?.nodes || []) {
+      const id = v.id.split('/').pop();
       const c = v.selectedOptions.find((o) => o.name === optName)?.value;
-      if (c) variants[v.id.split('/').pop()] = c;
+      if (c) variants[id] = c;
+      const d = designName && v.selectedOptions.find((o) => o.name === designName)?.value;
+      if (d && !isUploadDesign(d)) ready.push(id);
     }
     data = {
       colorOption: optName || 'Color',
       photos,
       variants,
+      ready,
       area: cleanPlace(parseJson(p.place?.value, PRINT_AREA)),
       printWidthIn: PRINT_WIDTH_IN,
     };

@@ -191,18 +191,27 @@
 
     // ----- the shirt color the shopper picked -----
     // The app sends variant id -> color, so this works on draft products too (their .js page is hidden).
-    function currentColor() {
-      if (!info) return '';
+    function currentId() {
       var form = findForm(box);
       var f = form && form.querySelector('[name="id"]');
       var id = f && f.value;
       if (!id) { var m = location.search.match(/[?&]variant=(\d+)/); id = m && m[1]; }
+      return id ? String(id) : '';
+    }
+    // A ready-made design (not "Your art") needs no upload: hide the designer and send no art.
+    function readyMade() { return !!(info && info.ready && info.ready.indexOf(currentId()) >= 0); }
+    var wasReady = false;
+    function currentColor() {
+      if (!info) return '';
+      var id = currentId();
       var map = info.variants || {};
       if (id && map[id]) return map[id];
       for (var k in map) return map[k];
       return '';
     }
     function watchColor() {
+      var r = readyMade();
+      if (r !== wasReady) { wasReady = r; box.style.display = r ? 'none' : ''; link(); }
       var c = currentColor();
       if (c === color && photo !== undefined) return;
       color = c;
@@ -217,7 +226,7 @@
       var form = findForm(box);
       var formId = form && form.getAttribute('id');
       hidden.innerHTML = '';
-      if (!art || !art.url) return;
+      if (!art || !art.url || readyMade()) return;
       var props = [['Artwork', art.url], ['Artwork file', art.name], ['Print size', art.printSize], ['Placement', art.placement]];
       if (art.place) {
         props.push(['_Placement', JSON.stringify({ x: +art.place.x.toFixed(4), y: +art.place.y.toFixed(4), w: +art.place.w.toFixed(4), h: +art.place.h.toFixed(4), color: color })]);
@@ -273,6 +282,7 @@
 
     // ----- don't let them add to cart without art -----
     function problem() {
+      if (readyMade()) return '';
       if (busy) return 'Still uploading, one moment...';
       if (required && !art) return 'Please upload your art first.';
       return '';

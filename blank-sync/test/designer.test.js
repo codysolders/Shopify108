@@ -120,3 +120,17 @@ test('uploads are accepted from the store and its own preview links only', async
   assert.ok(!originAllowed('https://x-76712607976.shopifypreview.com.evil.com', set));
   assert.ok(!originAllowed('https://evil.com', set));
 });
+
+test('ready-made designs are listed so the page skips the upload for them', async () => {
+  d.clearDesignerCache();
+  const pv = (id, design) => ({ id: `gid://shopify/ProductVariant/${id}`, selectedOptions: [{ name: 'Design', value: design }, { name: 'Color', value: 'Cardinal Red' }], media: { nodes: [] } });
+  const out = await d.designerProduct('7', async () => ({ product: {
+    id: 'gid://shopify/Product/7', title: 't', tags: ['Designer'], place: null,
+    options: [{ name: 'Design', values: ['Your art', 'Eat Fast'] }, { name: 'Color', values: ['Cardinal Red'] }],
+    variants: { nodes: [pv(1, 'Your art'), pv(2, 'Eat Fast')] },
+    blank: null,
+  } }));
+  assert.deepEqual(out.ready, ['2']);
+  assert.equal(d.isUploadDesign('Upload your own'), true);
+  assert.equal(d.isUploadDesign('Spokane Winter'), false);
+});
