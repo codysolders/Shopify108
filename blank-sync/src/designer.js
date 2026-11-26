@@ -67,9 +67,16 @@ export async function designerProduct(id, gql = graphql) {
     const byKey = photosByColor(p);
     const photos = {};
     for (const c of colorOption(p.options)?.values || []) if (byKey[colorKey(c)]) photos[c] = byKey[colorKey(c)];
+    const optName = colorOption(p.options)?.name;
+    const variants = {};
+    for (const v of p.variants?.nodes || []) {
+      const c = v.selectedOptions.find((o) => o.name === optName)?.value;
+      if (c) variants[v.id.split('/').pop()] = c;
+    }
     data = {
-      colorOption: colorOption(p.options)?.name || 'Color',
+      colorOption: optName || 'Color',
       photos,
+      variants,
       area: cleanPlace(parseJson(p.place?.value, PRINT_AREA)),
       printWidthIn: PRINT_WIDTH_IN,
     };

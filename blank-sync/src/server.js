@@ -10,7 +10,7 @@ import { addBlankKey, createBlank, colorsFromLink, blankLists, renderAddBlankPag
 import { createTemplate } from './templates.js';
 import { mockupsKey, loadProduct, listTagged, designTags, saveArt, savePlace, savePhoto, makeMockups, hidePlainPhotos } from './mockups.js';
 import { renderMockupHome, renderMockupGroup, renderMockupProduct } from './mockupPage.js';
-import { customOrdersKey, saveCustomerArt, allowedOrigins, rateLimited, ordersWithArt } from './artUpload.js';
+import { customOrdersKey, saveCustomerArt, allowedOrigins, originAllowed, rateLimited, ordersWithArt } from './artUpload.js';
 import { artUploadScript } from './artScript.js';
 import { renderCustomOrdersPage } from './customOrdersPage.js';
 import { designerProduct, designerScript, mockupRequest, drawMockup } from './designer.js';
@@ -175,7 +175,8 @@ export function createServer() {
       if (url.pathname === '/art/upload') {
         const origin = String(req.headers.origin || '');
         const allowed = await allowedOrigins();
-        const cors = allowed.has(origin)
+        const ok = originAllowed(origin, allowed);
+        const cors = ok
           ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' }
           : {};
         const json = (status, body) => {
@@ -187,7 +188,7 @@ export function createServer() {
           return res.end();
         }
         if (req.method !== 'POST') return json(405, { error: 'Use POST.' });
-        if (!allowed.has(origin)) {
+        if (!ok) {
           log(`art upload refused from origin "${origin}"`);
           return json(403, { error: 'Uploads only work from our store.' });
         }

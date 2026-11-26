@@ -1,6 +1,6 @@
 // Runs in the shopper's browser on products tagged "Designer". Served by the app as /tee-designer.js,
 // with `S` (settings) put in front of it. Plain ES5 so it works on every browser the store supports.
-// Theme snippet: <div data-blank-sync-designer data-product="{{ product.id }}" data-handle="{{ product.handle }}"></div>
+// Theme snippet: <div data-blank-sync-designer data-product="{{ product.id }}"></div>
 (function () {
   var ACCEPT = '.png,.jpg,.jpeg,.svg,.pdf,.ai,.eps,.psd';
   var css = '.bsd{margin:12px 0}.bsd__t{font-weight:600;margin:0 0 6px}' +
@@ -60,7 +60,7 @@
     box.dataset.ready = '1';
     if (!document.getElementById('bsd-css')) { var st = el('style'); st.id = 'bsd-css'; st.textContent = css; document.head.appendChild(st); }
     var required = box.getAttribute('data-required') !== 'false';
-    var info = null, product = null, color = '', photo = null;
+    var info = null, color = '', photo = null;
     var art = null; // { url, name, kind: 'image'|'file', w, h, mockup }
     var pos = { cx: 0.5, top: 0, s: 0.8 }; // art center across and top, as parts of the print area; s = width / area width
     var busy = false;
@@ -190,29 +190,20 @@
     shirt.addEventListener('load', draw);
 
     // ----- the shirt color the shopper picked -----
-    function currentVariant() {
-      if (!product) return null;
+    // The app sends variant id -> color, so this works on draft products too (their .js page is hidden).
+    function currentColor() {
+      if (!info) return '';
       var form = findForm(box);
       var f = form && form.querySelector('[name="id"]');
       var id = f && f.value;
       if (!id) { var m = location.search.match(/[?&]variant=(\d+)/); id = m && m[1]; }
-      var list = product.variants || [];
-      for (var i = 0; i < list.length; i++) if (String(list[i].id) === String(id)) return list[i];
-      return list[0] || null;
-    }
-    function colorIndex() {
-      var opts = product.options || [];
-      for (var i = 0; i < opts.length; i++) {
-        var name = typeof opts[i] === 'string' ? opts[i] : opts[i].name;
-        if (info && name === info.colorOption) return i;
-      }
-      for (var j = 0; j < opts.length; j++) { var nm = typeof opts[j] === 'string' ? opts[j] : opts[j].name; if (/^colou?r/i.test(nm)) return j; }
-      return -1;
+      var map = info.variants || {};
+      if (id && map[id]) return map[id];
+      for (var k in map) return map[k];
+      return '';
     }
     function watchColor() {
-      var v = currentVariant();
-      var ci = product ? colorIndex() : -1;
-      var c = v && ci >= 0 ? v.options[ci] : '';
+      var c = currentColor();
       if (c === color && photo !== undefined) return;
       color = c;
       photo = (info && info.photos[c]) || null;
@@ -301,14 +292,8 @@
 
     // ----- load the product -----
     var pid = box.getAttribute('data-product');
-    var handle = box.getAttribute('data-handle');
-    var root = (window.Shopify && Shopify.routes && Shopify.routes.root) || '/';
-    Promise.all([
-      fetch(S.appUrl + '/designer/product?id=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }),
-      fetch(root + 'products/' + encodeURIComponent(handle) + '.js').then(function (r) { return r.json(); }),
-    ]).then(function (res) {
-      info = res[0] && res[0].photos ? res[0] : null;
-      product = res[1];
+    fetch(S.appUrl + '/designer/product?id=' + encodeURIComponent(pid)).then(function (r) { return r.json(); }).then(function (res) {
+      info = res && res.photos ? res : null;
       photo = undefined; watchColor();
     }).catch(function () { photo = undefined; draw(); });
     draw();

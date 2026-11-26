@@ -99,3 +99,24 @@ test('the browser script is valid JavaScript with the app address', () => {
   assert.doesNotThrow(() => new Function(js));
   assert.match(js, /"appUrl":"https:\/\/app.example"/);
 });
+
+test('variant ids map to their color, so draft products work too', async () => {
+  d.clearDesignerCache();
+  const out = await d.designerProduct('6', async () => ({ product: {
+    id: 'gid://shopify/Product/6', title: 't', tags: ['designer'], place: null,
+    options: [{ name: 'Color', values: ['Black'] }],
+    variants: { nodes: [{ id: 'gid://shopify/ProductVariant/77', ...v('Black', null) }] },
+    blank: null,
+  } }));
+  assert.deepEqual(out.variants, { 77: 'Black' });
+});
+
+test('uploads are accepted from the store and its own preview links only', async () => {
+  const { allowedOrigins, originAllowed } = await import('../src/artUpload.js');
+  const set = await allowedOrigins(async () => ({ shop: { id: 'gid://shopify/Shop/76712607976', myshopifyDomain: 'test.myshopify.com', primaryDomain: { host: '10-8design.com' } } }));
+  assert.ok(originAllowed('https://10-8design.com', set));
+  assert.ok(originAllowed('https://2hfyyafsu2glfo40-76712607976.shopifypreview.com', set));
+  assert.ok(!originAllowed('https://abc-11111111111.shopifypreview.com', set));
+  assert.ok(!originAllowed('https://x-76712607976.shopifypreview.com.evil.com', set));
+  assert.ok(!originAllowed('https://evil.com', set));
+});
