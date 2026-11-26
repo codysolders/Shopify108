@@ -175,6 +175,41 @@ remove the background, with an optional notes box. The answers show on the order
 the store's own web addresses (add others with the `ART_ORIGINS` setting) and at most 30 an hour
 from one address.
 
+## Tee designer: customers place their art on the shirt
+
+A product tagged **Designer** shows a live preview on its store page: the customer picks the color
+and size as usual, uploads their art, and sees it on a photo of that shirt color. They drag the art
+to move it, use the **Size** slider, or press **Full front**, **Center it** or **Left chest**. The
+dashed box is the print area (12 in wide by about 14 in tall on an adult tee). Add to cart is blocked
+until the art has uploaded.
+
+The order line gets:
+
+- **Artwork** and **Artwork file**: the customer's file, saved in Shopify Files (same as the upload box).
+- **Print size**: for example `10.0 in wide x 8.3 in tall`.
+- **Placement**: for example `Centered, top of art 0.5 in below the top of the print area`.
+- **Mockup**: a link to a picture of the art on that shirt color, drawn by the app when it's opened
+  (PNG and JPG art only).
+
+Orders are tagged `custom-art` and show on the Custom orders page with the mockup.
+
+**Setting up the product:** duplicate `TEMPLATE - Gildan Soft Style G640 design`, rename it, set the
+Design value (for example "Your art"), set the price, add the tag `Designer`, and publish. Shirt
+photos come from the linked blank's color photos (a photo on the product's own variants wins). Stock
+comes from the blank like every design. Don't also tag it `Upload`.
+
+**Theme snippet** (a Custom Liquid block in the product information section, near the buy buttons):
+
+```liquid
+{% if product.tags contains 'Designer' %}
+  <div data-blank-sync-designer data-product="{{ product.id }}" data-handle="{{ product.handle }}"></div>
+  <script src="https://blank-sync-478869332742.us-west1.run.app/tee-designer.js" defer></script>
+{% endif %}
+```
+
+To move or resize the print area for one product, open it on the Mockups page, adjust the sliders and
+**Save placement**. That box becomes the dashed print area (it takes up to 5 minutes to show).
+
 ## Restock minimums and the reorder list
 
 On each **blank** product in Shopify, fill in (under Metafields):
@@ -220,6 +255,7 @@ run `node scripts/make-env.js` and `node scripts/store-secrets.js` again.
 - Node 20+. Dependencies: nodemailer (email) and sharp (mockup images). `npm test` runs the tests.
 - `src/mockups.js` and `src/mockupPage.js`: the Mockups page and image generator.
 - `src/artUpload.js`, `src/artScript.js`, `src/customOrdersPage.js`: customer art upload and the Custom orders page.
+- `src/designer.js`, `src/teeDesigner.client.js`: the tee designer (product photos, the browser script, mockup pictures).
 - `src/matching.js`: pure matching of design variants to blank variants.
 - `src/blankMap.js`: reads linked products from Shopify and builds the lookup index (cached 5 minutes,
   cleared on product webhooks).

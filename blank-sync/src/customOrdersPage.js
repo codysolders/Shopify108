@@ -1,5 +1,6 @@
 // HTML for the private Custom orders page: recent orders with the customer's art.
 import { config } from './config.js';
+import { mockupOnLine } from './designer.js';
 
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -7,6 +8,9 @@ const isImage = (url) => /\.(png|jpe?g|webp|gif)(\?|$)/i.test(url);
 const small = (url, w = 300) => (url.includes('cdn.shopify.com') ? `${url}${url.includes('?') ? '&' : '?'}width=${w}` : url);
 const orderAdmin = (id) => `https://admin.shopify.com/store/${config.shop}/orders/${String(id).split('/').pop()}`;
 const fileExt = (url) => (url.split('?')[0].match(/\.([a-z0-9]+)$/i) || [])[1]?.toUpperCase() || 'FILE';
+
+const mockupLink = (url) =>
+  url ? `<a class="f" href="${esc(url)}" target="_blank" rel="noopener"><img class="mock" src="${esc(url)}" alt="Mockup"><span>Mockup</span></a>` : '';
 
 const STYLE = `
 :root{--bg:#fff;--fg:#1a1a1a;--muted:#6b6b6b;--line:#d9d9d9;--accent:#0a6c4a;--warn:#b42318;--tile:#f4f4f4;--badbg:#fdecea}
@@ -22,6 +26,7 @@ h1{font-size:22px;margin:8px 0 4px}.v{color:var(--muted);font-size:13px}a{color:
 .art a.f{display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;font-size:12px}
 .art img,.art .doc{width:110px;height:110px;object-fit:contain;border-radius:6px;background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/12px 12px}
 .art .doc{display:flex;align-items:center;justify-content:center;background:var(--tile);color:var(--fg);font-weight:700}
+.art img.mock{background:var(--tile);object-fit:cover}
 .lost{background:var(--badbg);border-radius:6px;padding:8px;font-size:13px}
 .note{font-size:13px;margin-top:4px;white-space:pre-wrap}
 .tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px}
@@ -35,6 +40,7 @@ export function renderCustomOrdersPage({ orders, days }) {
         <div class="grow"><b>${esc(li.title)}</b><div>${esc(li.variantTitle || '')}</div><div class="v">Qty ${li.quantity}</div>
           ${(li.notes || []).map((n) => `<div class="note"><b>${esc(n.key)}:</b> ${esc(n.value)}</div>`).join('')}</div>
         <div class="art">
+          ${mockupLink(mockupOnLine(li.customAttributes))}
           ${li.art.map((a) => `<a class="f" href="${esc(a.url)}" target="_blank" rel="noopener" download>
             ${isImage(a.url) ? `<img src="${esc(small(a.url))}" alt="">` : `<span class="doc">${esc(fileExt(a.url))}</span>`}
             <span>Download${a.name ? `: ${esc(a.name.slice(0, 28))}` : ''}</span></a>`).join('')}

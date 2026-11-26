@@ -13,6 +13,7 @@ import { renderMockupHome, renderMockupGroup, renderMockupProduct } from './mock
 import { customOrdersKey, saveCustomerArt, allowedOrigins, rateLimited, ordersWithArt } from './artUpload.js';
 import { artUploadScript } from './artScript.js';
 import { renderCustomOrdersPage } from './customOrdersPage.js';
+import { designerProduct, designerScript, mockupRequest, drawMockup } from './designer.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -134,6 +135,42 @@ export function createServer() {
       if (url.pathname === '/art-upload.js' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
         return res.end(artUploadScript(config.appUrl));
+      }
+      // Tee designer (products tagged Designer): the script, the product's photos, and mockup pictures.
+      if (url.pathname === '/tee-designer.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+        return res.end(designerScript(config.appUrl));
+      }
+      if (url.pathname === '/designer/product' && req.method === 'GET') {
+        let data = null;
+        try {
+          data = await designerProduct(url.searchParams.get('id') || '');
+        } catch (e) {
+          log('designer product failed:', e.message);
+        }
+        res.writeHead(data ? 200 : 404, { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', 'Access-Control-Allow-Origin': '*' });
+        return res.end(JSON.stringify(data || { error: 'Not a Designer product.' }));
+      }
+      if (url.pathname === '/mockup.jpg' && req.method === 'GET') {
+        const r = mockupRequest(url.searchParams);
+        if (!r) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          return res.end('bad mockup link');
+        }
+        const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+        if (rateLimited(`mockup:${ip}`, { max: 200 })) {
+          res.writeHead(429, { 'Content-Type': 'text/plain' });
+          return res.end('too many mockups, try again later');
+        }
+        try {
+          const jpg = await drawMockup(r);
+          res.writeHead(200, { 'Content-Type': 'image/jpeg', 'Cache-Control': 'public, max-age=31536000, immutable' });
+          return res.end(jpg);
+        } catch (e) {
+          log('mockup failed:', e.message);
+          res.writeHead(502, { 'Content-Type': 'text/plain' });
+          return res.end('could not draw the mockup');
+        }
       }
       if (url.pathname === '/art/upload') {
         const origin = String(req.headers.origin || '');
