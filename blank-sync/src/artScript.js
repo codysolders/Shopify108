@@ -13,7 +13,7 @@ export function artUploadScript(appUrl) {
     '.bsa__img{width:72px;height:72px;object-fit:contain;border-radius:6px;background:repeating-conic-gradient(#ddd 0 25%,#fff 0 50%) 0 0/12px 12px}' +
     '.bsa__s{font-size:.9em}.bsa__s--bad{color:#b42318;font-weight:600}.bsa__s--ok{color:#0a6c4a;font-weight:600}' +
     '.bsa__x{background:none;border:0;padding:0;text-decoration:underline;cursor:pointer;font:inherit;color:inherit}' +
-    '.bsa input[type=file]{max-width:100%}';
+    '.bsa input[type=file]{max-width:100%}.bsa [hidden]{display:none!important}';
 
   function el(tag, cls, text) { var e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
 
