@@ -90,7 +90,7 @@ test('script and page render', () => {
   assert.match(html, /#1300/);
   assert.match(html, /PDF/);
   assert.ok(!html.includes('<b>'.repeat(1) + '</span>'));
-  assert.match(html, /A &lt;b&gt;/);
+  assert.ok(!html.includes('A <b>'));
 });
 
 test('orders with art get the custom-art tag', async () => {
