@@ -10,6 +10,9 @@ import { addBlankKey, createBlank, colorsFromLink, blankLists, renderAddBlankPag
 import { createTemplate } from './templates.js';
 import { mockupsKey, loadProduct, listTagged, designTags, saveArt, savePlace, savePhoto, makeMockups, hidePlainPhotos } from './mockups.js';
 import { renderMockupHome, renderMockupGroup, renderMockupProduct } from './mockupPage.js';
+import { customOrdersKey, saveCustomerArt, allowedOrigins, rateLimited, ordersWithArt } from './artUpload.js';
+import { artUploadScript } from './artScript.js';
+import { renderCustomOrdersPage } from './customOrdersPage.js';
 import { emailConfigured, reorderEmailText, sendReorderEmail } from './email.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -127,6 +130,54 @@ export function createServer() {
         const key = url.searchParams.get('key') || '';
         return key.length === expected.length && crypto.timingSafeEqual(Buffer.from(key), Buffer.from(expected));
       };
+      // Customer art upload, called from the store's product pages.
+      if (url.pathname === '/art-upload.js' && req.method === 'GET') {
+        res.writeHead(200, { 'Content-Type': 'application/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=300' });
+        return res.end(artUploadScript(config.appUrl));
+      }
+      if (url.pathname === '/art/upload') {
+        const origin = String(req.headers.origin || '');
+        const allowed = await allowedOrigins();
+        const cors = allowed.has(origin)
+          ? { 'Access-Control-Allow-Origin': origin, 'Access-Control-Allow-Methods': 'POST', 'Access-Control-Allow-Headers': 'Content-Type', Vary: 'Origin' }
+          : {};
+        const json = (status, body) => {
+          res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...cors });
+          return res.end(JSON.stringify(body));
+        };
+        if (req.method === 'OPTIONS') {
+          res.writeHead(204, cors);
+          return res.end();
+        }
+        if (req.method !== 'POST') return json(405, { error: 'Use POST.' });
+        if (!allowed.has(origin)) {
+          log(`art upload refused from origin "${origin}"`);
+          return json(403, { error: 'Uploads only work from our store.' });
+        }
+        const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+        if (rateLimited(ip)) return json(429, { error: 'Too many uploads. Please wait a bit, or email your art to us.' });
+        try {
+          const form = await readMultipart(req, 26 * 1024 * 1024);
+          const file = form.get('file');
+          if (!file || typeof file === 'string') return json(400, { error: 'No file was sent.' });
+          const out = await saveCustomerArt({ buf: Buffer.from(await file.arrayBuffer()), filename: file.name || 'art' });
+          log(`art upload saved: ${out.url}`);
+          return json(200, { url: out.url, image: out.image });
+        } catch (e) {
+          log('art upload failed:', e.message);
+          return json(e.userFacing ? 400 : 500, { error: e.userFacing ? e.message : 'Upload failed on our side.' });
+        }
+      }
+      if (url.pathname === '/custom-orders' && req.method === 'GET') {
+        if (!keyOk(customOrdersKey())) {
+          res.writeHead(403, { 'Content-Type': 'text/plain' });
+          return res.end('This link is missing its key. Ask the owner for the Custom orders link.');
+        }
+        const days = Math.min(365, Math.max(7, Number(url.searchParams.get('days')) || 120));
+        const html = renderCustomOrdersPage({ orders: await ordersWithArt({ days }), days });
+        res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
+        return res.end(html);
+      }
       // Mockups: its own key.
       if (url.pathname === '/mockups' || url.pathname.startsWith('/mockups/')) {
         if (!keyOk(mockupsKey())) {
