@@ -174,7 +174,14 @@ export function createServer() {
           return res.end('This link is missing its key. Ask the owner for the Custom orders link.');
         }
         const days = Math.min(365, Math.max(7, Number(url.searchParams.get('days')) || 120));
-        const html = renderCustomOrdersPage({ orders: await ordersWithArt({ days }), days });
+        let html;
+        try {
+          html = renderCustomOrdersPage({ orders: await ordersWithArt({ days }), days });
+        } catch (e) {
+          log('custom orders page failed:', e.message);
+          res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
+          return res.end(`Could not load orders from Shopify: ${e.message.slice(0, 300)}`);
+        }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' });
         return res.end(html);
       }

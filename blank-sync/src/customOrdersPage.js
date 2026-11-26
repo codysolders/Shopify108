@@ -42,7 +42,6 @@ export function renderCustomOrdersPage({ orders, days }) {
         </div>
       </div>`).join('');
     return `<div class="order"><div class="top"><b><a href="${orderAdmin(o.id)}" target="_blank" rel="noopener">${esc(o.name)}</a></b>
-      <span>${esc(o.customer?.displayName || 'No customer')}</span>
       <span class="v">${esc(new Date(o.createdAt).toLocaleDateString('en-US', { timeZone: 'America/Los_Angeles', month: 'short', day: 'numeric', year: 'numeric' }))}</span>
       ${status ? `<span class="tag">${esc(status)}</span>` : ''}</div>${lines}</div>`;
   }).join('');

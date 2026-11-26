@@ -160,7 +160,6 @@ query O($q: String!, $after: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       id name createdAt displayFulfillmentStatus cancelledAt
-      customer { displayName }
       lineItems(first: 50) {
         nodes { title variantTitle quantity customAttributes { key value } image { url } }
       }
