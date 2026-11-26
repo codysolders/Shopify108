@@ -104,3 +104,16 @@ test('orders with art get the custom-art tag', async () => {
   await handleOrderCreated({ id: 1, name: '#1', tags: '', line_items: [{ variant_id: 2, quantity: 1, properties: [{ name: 'Artwork', value: 'https://cdn.shopify.com/x.png' }] }] }, { gql }).catch(() => {});
   assert.deepEqual(tagged.slice(0, 1), ['custom-art']);
 });
+
+test('several designs and print answers are read from the order line', () => {
+  const attrs = [
+    { key: 'Artwork', value: 'https://cdn.shopify.com/a.png' }, { key: 'Artwork file', value: 'a.png' },
+    { key: 'Artwork 2', value: 'https://cdn.shopify.com/b.pdf' }, { key: 'Artwork 2 file', value: 'b.pdf' },
+    { key: 'Print size', value: '10 in wide' }, { key: 'Copies', value: '12' }, { key: '_hidden', value: 'x' },
+  ];
+  assert.deepEqual(a.artOnLine(attrs).map((x) => x.name), ['a.png', 'b.pdf']);
+  assert.deepEqual(a.printNotes(attrs).map((x) => x.key), ['Print size', 'Copies']);
+  const html = renderCustomOrdersPage({ days: 30, orders: [{ id: '1', name: '#1', createdAt: '2026-11-26T00:00:00Z',
+    lines: [{ title: 'Gang', quantity: 1, art: a.artOnLine(attrs), lost: [], notes: a.printNotes(attrs) }] }] });
+  assert.match(html, /Print size:<\/b> 10 in wide/);
+});

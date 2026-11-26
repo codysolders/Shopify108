@@ -174,13 +174,20 @@ const isUrl = (v) => /^https:\/\//i.test(String(v || ''));
 export function artOnLine(attrs = []) {
   const byKey = Object.fromEntries(attrs.map((a) => [a.key, a.value]));
   const out = [];
-  if (isUrl(byKey[ART_PROPERTY])) out.push({ url: byKey[ART_PROPERTY], name: byKey[ART_NAME_PROPERTY] || '' });
+  const ours = new RegExp(`^${ART_PROPERTY}( \\d+)?$`);
   for (const a of attrs) {
-    if (a.key === ART_PROPERTY || a.key.startsWith('_')) continue;
+    if (ours.test(a.key) && isUrl(a.value)) out.push({ url: a.value, name: byKey[`${a.key} file`] || (a.key === ART_PROPERTY ? byKey[ART_NAME_PROPERTY] : '') || '' });
+  }
+  for (const a of attrs) {
+    if (ours.test(a.key) || a.key.startsWith('_')) continue;
     if (isUrl(a.value) && /cdn\.shopify\.com|\/uploads\//.test(a.value)) out.push({ url: a.value, name: a.key });
   }
   return out;
 }
+
+/** Answers to the print questions (size, copies, ...) and any other text the customer typed. */
+export const printNotes = (attrs = []) =>
+  attrs.filter((a) => !a.key.startsWith('_') && !/^Artwork( \d+)?( file)?$/.test(a.key) && !isUrl(a.value) && !/fakepath/i.test(a.value || '') && String(a.value || '').trim());
 
 /** The old upload button only sent the file name ("C:\fakepath\..."), never the file. */
 export const lostArt = (attrs = []) => attrs.filter((a) => /fakepath/i.test(a.value || '')).map((a) => a.value.split('\\').pop());
@@ -194,7 +201,7 @@ export async function ordersWithArt({ days = 120, gql = graphql } = {}) {
     const r = (await gql(ORDERS, { q: `created_at:>=${since}`, after })).orders;
     for (const o of r.nodes) {
       const lines = o.lineItems.nodes
-        .map((li) => ({ ...li, art: artOnLine(li.customAttributes), lost: lostArt(li.customAttributes) }))
+        .map((li) => ({ ...li, art: artOnLine(li.customAttributes), lost: lostArt(li.customAttributes), notes: printNotes(li.customAttributes) }))
         .filter((li) => li.art.length || li.lost.length);
       if (lines.length) out.push({ ...o, lines });
     }

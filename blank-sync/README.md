@@ -168,7 +168,10 @@ Theme snippet (a **Custom Liquid** block in the product information section of t
 {% endif %}
 ```
 
-Add `data-required="false"` to the div to make the upload optional. Uploads are only accepted from
+Add `data-required="false"` to the div to make the upload optional. For gang sheets, use
+`<div data-blank-sync-art data-max-files="10" data-questions="gang"></div>`: customers can upload up to 10
+designs (saved as Artwork, Artwork 2, ...) and must answer how big to print, how many copies and whether to
+remove the background, with an optional notes box. The answers show on the order and the Custom orders page. Uploads are only accepted from
 the store's own web addresses (add others with the `ART_ORIGINS` setting) and at most 30 an hour
 from one address.
 

@@ -23,6 +23,7 @@ h1{font-size:22px;margin:8px 0 4px}.v{color:var(--muted);font-size:13px}a{color:
 .art img,.art .doc{width:110px;height:110px;object-fit:contain;border-radius:6px;background:repeating-conic-gradient(#ccc 0 25%,#fff 0 50%) 0 0/12px 12px}
 .art .doc{display:flex;align-items:center;justify-content:center;background:var(--tile);color:var(--fg);font-weight:700}
 .lost{background:var(--badbg);border-radius:6px;padding:8px;font-size:13px}
+.note{font-size:13px;margin-top:4px;white-space:pre-wrap}
 .tag{font-size:12px;border:1px solid var(--line);border-radius:999px;padding:1px 8px}
 `;
 
@@ -31,7 +32,8 @@ export function renderCustomOrdersPage({ orders, days }) {
     const status = o.cancelledAt ? 'Cancelled' : String(o.displayFulfillmentStatus || '').replace(/_/g, ' ').toLowerCase();
     const lines = o.lines.map((li) => `
       <div class="line">
-        <div class="grow"><b>${esc(li.title)}</b><div>${esc(li.variantTitle || '')}</div><div class="v">Qty ${li.quantity}</div></div>
+        <div class="grow"><b>${esc(li.title)}</b><div>${esc(li.variantTitle || '')}</div><div class="v">Qty ${li.quantity}</div>
+          ${(li.notes || []).map((n) => `<div class="note"><b>${esc(n.key)}:</b> ${esc(n.value)}</div>`).join('')}</div>
         <div class="art">
           ${li.art.map((a) => `<a class="f" href="${esc(a.url)}" target="_blank" rel="noopener" download>
             ${isImage(a.url) ? `<img src="${esc(small(a.url))}" alt="">` : `<span class="doc">${esc(fileExt(a.url))}</span>`}
