@@ -4,6 +4,7 @@ import { graphql, gid } from './shopify.js';
 import { getBlankMap, invalidateBlankMap } from './blankMap.js';
 import { handleDesignProductWebhook } from './designSetup.js';
 import { orderHasArt, ART_TAG } from './artUpload.js';
+import { clearDesignerCache } from './designer.js';
 import { adjustBlanks, getAvailable, setDesignQuantities, getDefaultLocationId } from './inventory.js';
 
 const log = (...a) => console.log(new Date().toISOString(), ...a);
@@ -115,7 +116,8 @@ export const topicHandlers = {
   'orders/create': handleOrderCreated,
   'refunds/create': handleRefundCreated,
   'inventory_levels/update': handleInventoryLevelUpdate,
-  'products/update': handleDesignProductWebhook,
-  'products/create': handleDesignProductWebhook,
+  // A product change can add colors or photos, so the tee designer reloads them.
+  'products/update': (p, deps) => (clearDesignerCache(), handleDesignProductWebhook(p, deps)),
+  'products/create': (p, deps) => (clearDesignerCache(), handleDesignProductWebhook(p, deps)),
   'products/delete': handleProductChanged,
 };

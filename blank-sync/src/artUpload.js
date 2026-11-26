@@ -68,8 +68,11 @@ export async function allowedOrigins(gql = graphql) {
   const set = new Set([`https://${config.shop}.myshopify.com`]);
   for (const o of String(process.env.ART_ORIGINS || '').split(',').map((s) => s.trim()).filter(Boolean)) set.add(o.replace(/\/$/, ''));
   try {
-    const d = await gql(`{ shop { myshopifyDomain primaryDomain { host } } }`);
+    const d = await gql(`{ shop { id myshopifyDomain primaryDomain { host } } }`);
     set.add(`https://${d.shop.myshopifyDomain}`);
+    // Theme and draft-product previews: https://<random>-<shop number>.shopifypreview.com
+    const num = String(d.shop.id || '').split('/').pop();
+    if (/^\d+$/.test(num)) set.previewSuffix = `-${num}.shopifypreview.com`;
     const host = d.shop.primaryDomain?.host;
     if (host) {
       set.add(`https://${host}`);
@@ -81,6 +84,13 @@ export async function allowedOrigins(gql = graphql) {
   }
   originsCache = { set, at: Date.now() };
   return set;
+}
+
+/** Pure: is this page address one of the store's own (including its preview links)? */
+export function originAllowed(origin, set) {
+  if (set.has(origin)) return true;
+  const m = String(origin).match(/^https:\/\/([a-z0-9-]+\.shopifypreview\.com)$/);
+  return Boolean(m && set.previewSuffix && m[1].endsWith(set.previewSuffix));
 }
 
 const recent = new Map(); // ip -> [timestamps]
