@@ -73,18 +73,25 @@ export async function designerProduct(id, gql = graphql) {
     const designName = designOption(p.options)?.name;
     const variants = {};
     const ready = [];
+    const designColors = {}; // ready-made design -> the colors it comes in
     for (const v of p.variants?.nodes || []) {
       const id = v.id.split('/').pop();
       const c = v.selectedOptions.find((o) => o.name === optName)?.value;
       if (c) variants[id] = c;
       const d = designName && v.selectedOptions.find((o) => o.name === designName)?.value;
-      if (d && !isUploadDesign(d)) ready.push(id);
+      if (d && !isUploadDesign(d)) {
+        ready.push(id);
+        if (!designColors[d]) designColors[d] = [];
+        if (c && !designColors[d].includes(c)) designColors[d].push(c);
+      }
     }
     data = {
       colorOption: optName || 'Color',
       photos,
       variants,
       ready,
+      designOption: designName || null,
+      designColors,
       area: cleanPlace(parseJson(p.place?.value, PRINT_AREA)),
       printWidthIn: PRINT_WIDTH_IN,
     };

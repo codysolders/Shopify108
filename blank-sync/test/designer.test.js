@@ -131,6 +131,8 @@ test('ready-made designs are listed so the page skips the upload for them', asyn
     blank: null,
   } }));
   assert.deepEqual(out.ready, ['2']);
+  assert.equal(out.designOption, 'Design');
+  assert.deepEqual(out.designColors, { 'Eat Fast': ['Cardinal Red'] });
   assert.equal(d.isUploadDesign('Upload your own'), true);
   assert.equal(d.isUploadDesign('Spokane Winter'), false);
 });

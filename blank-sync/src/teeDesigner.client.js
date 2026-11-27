@@ -198,8 +198,41 @@
       if (!id) { var m = location.search.match(/[?&]variant=(\d+)/); id = m && m[1]; }
       return id ? String(id) : '';
     }
+    // The value the shopper picked for an option (radio buttons or a dropdown), or null.
+    var scope = box.closest('section, .shopify-section') || document;
+    function picked(name) {
+      if (!name) return null;
+      var radios = scope.querySelectorAll('input[type="radio"]:checked');
+      for (var i = 0; i < radios.length; i++) if (radios[i].name.indexOf(name + '-') === 0) return radios[i].value;
+      var sel = scope.querySelector('select[name="options[' + name + ']"]');
+      return sel ? sel.value : null;
+    }
     // A ready-made design (not "Your art") needs no upload: hide the designer and send no art.
-    function readyMade() { return !!(info && info.ready && info.ready.indexOf(currentId()) >= 0); }
+    // Read the picked Design itself, since the variant id is empty while a color/design pair doesn't exist.
+    function readyMade() {
+      if (!info) return false;
+      var d = picked(info.designOption);
+      if (d !== null && info.designColors) return Object.prototype.hasOwnProperty.call(info.designColors, d);
+      return !!(info.ready && info.ready.indexOf(currentId()) >= 0);
+    }
+    // A ready-made design that only comes in some colors: switch to one it comes in.
+    var fixedFor = '';
+    function fixColor() {
+      if (!info || !info.designColors) return;
+      var d = picked(info.designOption);
+      var colors = d !== null && info.designColors[d];
+      if (!colors || !colors.length) { fixedFor = ''; return; }
+      var c = picked(info.colorOption);
+      if (c === null || colors.indexOf(c) >= 0 || fixedFor === d + '|' + c) return;
+      fixedFor = d + '|' + c;
+      var radios = scope.querySelectorAll('input[type="radio"]');
+      for (var i = 0; i < radios.length; i++) {
+        var r = radios[i];
+        if (r.name.indexOf(info.colorOption + '-') === 0 && r.value === colors[0]) { r.click(); return; }
+      }
+      var sel = scope.querySelector('select[name="options[' + info.colorOption + ']"]');
+      if (sel) { sel.value = colors[0]; sel.dispatchEvent(new Event('change', { bubbles: true })); }
+    }
     var wasReady = false;
     function currentColor() {
       if (!info) return '';
@@ -210,6 +243,7 @@
       return '';
     }
     function watchColor() {
+      fixColor();
       var r = readyMade();
       if (r !== wasReady) { wasReady = r; box.style.display = r ? 'none' : ''; link(); }
       var c = currentColor();
